@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { propModel } from './models.js';
+import { propModel, propParts } from './models.js';
 import { valleyHeight, valleyPathX, NIAN, SPRIGS } from './valley.js';
 
 // 第一章 · 落花谷: 阿念 and her tree. Her blossom is falling and her grandmother is not back
@@ -21,10 +21,13 @@ function glowTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = c.getContext('2d');
+  // drawn on black and added to the scene (additive), so the sprite's square edge never shows
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, 64, 64);
   const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grd.addColorStop(0, 'rgba(255,240,244,1)');
-  grd.addColorStop(0.3, 'rgba(255,190,210,0.5)');
-  grd.addColorStop(1, 'rgba(255,170,195,0)');
+  grd.addColorStop(0, 'rgb(255,240,244)');
+  grd.addColorStop(0.3, 'rgb(128,95,105)');
+  grd.addColorStop(1, 'rgb(0,0,0)');
   g.fillStyle = grd;
   g.fillRect(0, 0, 64, 64);
   const t = new THREE.CanvasTexture(c);
@@ -190,6 +193,28 @@ export class Nian {
       this._makeSprigs();
     });
 
+    // ---------- blossoms already fallen under her tree ----------
+    propParts('blossom', { width: 0.24, anchor: 'bottom' }).then((parts) => {
+      let sd = 5;
+      const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      const N = 16, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+      const mats = [];
+      for (let i = 0, tries = 0; mats.length < N && tries < 80; tries++) {
+        const a = rnd() * Math.PI * 2, r = 0.8 + rnd() * 2.6;
+        const x = tx + Math.cos(a) * r, z = tz + Math.sin(a) * r;
+        if (Math.hypot(x - this.girlHome.x, z - this.girlHome.z) < 0.6) continue;
+        e.set((rnd() - 0.5) * 0.5, rnd() * 6.28, (rnd() - 0.5) * 0.5);
+        m4.compose(v.set(x, valleyHeight(x, z) - 0.01, z), q.setFromEuler(e), sc.setScalar(0.7 + rnd() * 0.6));
+        mats.push(m4.clone());
+      }
+      for (const p of parts) {
+        const inst = new THREE.InstancedMesh(p.geometry, p.material, mats.length);
+        mats.forEach((m, i) => inst.setMatrixAt(i, m));
+        inst.castShadow = inst.receiveShadow = true;
+        this.scene.add(inst);
+      }
+    }).catch((e) => console.warn('blossom model not loaded', e));
+
     // ---------- petals blown off the tree at the end ----------
     const N = 1400;
     const bg = new THREE.BufferGeometry();
@@ -255,16 +280,19 @@ export class Nian {
   /** Seven fallen sprigs around the valley, each a small branch of blossom lying in the grass. */
   _makeSprigs() {
     const tex = glowTexture();
-    const mat = new THREE.MeshStandardMaterial({ map: this.foliageMap, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.8, emissive: 0x5a2a36 });
     SPRIGS.forEach(([dx, dz], i) => {
       const x = this.treePos.x + dx, z = this.treePos.z + dz, y = valleyHeight(x, z);
-      const obj = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), mat);
-      obj.castShadow = true;
-      obj.position.set(x, y + 0.08, z);
-      obj.rotation.set(-Math.PI / 2 + 0.25, 0, i * 1.7);
+      // a blossoming branch lying in the grass (the model drops in when it has loaded)
+      const obj = new THREE.Group();
+      propModel('branch', { width: 0.85, anchor: 'bottom' }).then((m) => {
+        m.traverse((o) => { if (o.isMesh && !o.material.userData.lit) { o.material.userData.lit = true; o.material.emissive = new THREE.Color(0x4a2430); } });
+        obj.add(m);
+      }).catch((e) => console.warn('branch model not loaded', e));
+      obj.position.set(x, y - 0.02, z);
+      obj.rotation.set(0, i * 1.7, 0);
       obj.visible = false;
       this.scene.add(obj);
-      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xffd0dc, depthWrite: false, transparent: true, fog: false }));
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xffd0dc, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending, fog: false }));
       glow.scale.setScalar(2.2);
       glow.position.set(x, y + 0.25, z);
       glow.visible = false;
