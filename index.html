@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#1d2427" />
+<title>一炷香 · 序章</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&family=Noto+Serif+JP:wght@400;600&family=Cormorant+Garamond:ital,wght@0,500;1,400;1,500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #f4f1ea;
+    --ink-dim: rgba(244, 241, 234, 0.72);
+    --shadow: 0 1px 18px rgba(20, 26, 28, 0.55), 0 0 2px rgba(20, 26, 28, 0.6);
+    --ember: #ffb366;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #1d2427; color: var(--ink);
+    font-family: "Noto Serif SC", "Songti SC", serif;
+    user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  /* Outdoors the words are ink on snow; indoors they are light in the dark. */
+  body.out { --ink: #1e2523; --shadow: 0 0 14px rgba(236, 240, 238, 0.85), 0 0 3px rgba(236, 240, 238, 0.9); }
+  body.out #title { color: #1e2523; text-shadow: 0 0 30px rgba(236, 240, 238, 0.9); }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+
+  /* Letterbox bars for the cinematic shots */
+  #bars i { position: fixed; left: 0; right: 0; height: 0; background: #050505; transition: height 1.6s cubic-bezier(.4, 0, .2, 1); pointer-events: none; }
+  #bars i:first-child { top: 0; }
+  #bars i:last-child { bottom: 0; }
+  body.cine #bars i { height: 8vh; }
+  body.cine #hint { opacity: 0; animation: none; }
+
+  /* Story text */
+  #ui { position: fixed; inset: 0; pointer-events: none; }
+  .line {
+    position: absolute; left: 50%; top: 34%;
+    transform: translate(-50%, -50%);
+    font-size: clamp(20px, 5.2vmin, 30px); letter-spacing: 0.32em;
+    text-shadow: var(--shadow); white-space: nowrap;
+    opacity: 0; transition: opacity 1.6s ease, transform 1.6s ease, filter 1.6s ease;
+    filter: blur(4px);
+  }
+  .line.show { opacity: 1; filter: blur(0); }
+  .line.v {
+    writing-mode: vertical-rl; text-orientation: upright;
+    top: calc(6% + env(safe-area-inset-top)); left: auto; right: max(8vw, 22px); transform: none;
+    font-size: clamp(17px, 4.6vmin, 26px);
+    letter-spacing: 0.36em; line-height: 2.1; padding: 14px 6px;
+  }
+  body.out .line.v { background: radial-gradient(closest-side, rgba(236, 240, 238, 0.5), rgba(236, 240, 238, 0)); }
+  .line.v.left { right: auto; left: max(9vw, 28px); }
+
+  /* The Buddha's voice: brush-written columns around the middle, right to left */
+  .line.voice {
+    writing-mode: vertical-rl; text-orientation: upright;
+    top: calc(9% + env(safe-area-inset-top)); left: calc(50% + var(--x, 0em)); transform: translateX(-50%);
+    font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: clamp(22px, 5.6vmin, 34px);
+    letter-spacing: 0.22em; line-height: 1.6; padding: 16px 8px; color: #f3dcb0;
+  }
+  /* indoors the words stand beside the Buddha, not over the face */
+  body:not(.out) .line.voice { left: calc(76% + var(--x, 0em)); top: calc(12% + env(safe-area-inset-top)); }
+  @media (max-aspect-ratio: 4/5) { body:not(.out) .line.voice { left: calc(80% + var(--x, 0em) * 0.8); } }
+  body.out .line.voice { color: #2a2016; background: radial-gradient(closest-side, rgba(236, 240, 238, 0.55), rgba(236, 240, 238, 0)); }
+  body:not(.out) .line.voice.sutra { top: 14%; font-size: clamp(26px, 7vmin, 44px); letter-spacing: 0.4em; color: #ffe2b0; }
+  html:lang(ja) .line.voice { font-family: "Noto Serif JP", serif; font-weight: 600; font-size: clamp(19px, 4.8vmin, 28px); }
+  html:lang(en) .line.voice, html:lang(en) body:not(.out) .line.voice {
+    writing-mode: horizontal-tb; font-family: "Cormorant Garamond", Georgia, serif; font-style: italic; font-weight: 500;
+    left: 50%; top: calc(12% + env(safe-area-inset-top) + var(--y, 0em)); font-size: clamp(22px, 5.2vmin, 32px);
+    letter-spacing: 0.02em; line-height: 1.2; padding: 6px 28px; white-space: nowrap;
+  }
+  html:lang(en) body:not(.out) .line.voice.sutra { top: 74%; white-space: normal; width: min(86vw, 620px); text-align: center; }
+  /* The Buddha's words ink in one character at a time, each column ruled by a hairline */
+  .line.voice { filter: none; }
+  .line.voice .ch {
+    display: inline-block; opacity: 0; filter: blur(7px); transform: translateY(-0.12em);
+    transition: opacity 1.1s ease, filter 1.4s ease, transform 1.4s ease;
+    transition-delay: calc(var(--i) * 95ms);
+  }
+  .line.voice.show .ch { opacity: 1; filter: blur(0); transform: none; }
+  .line.voice:not(.show) .ch { transition-delay: 0s; }
+  .line.voice::before {
+    content: ''; position: absolute; top: 4px; bottom: 4px; right: -3px; width: 1px;
+    background: linear-gradient(to bottom, transparent, currentColor 18%, currentColor 82%, transparent);
+    opacity: 0; transform: scaleY(0.2); transform-origin: top;
+    transition: opacity 1.6s ease, transform 2.2s cubic-bezier(.2, .7, .2, 1);
+  }
+  .line.voice.show::before { opacity: 0.32; transform: none; }
+  body:not(.out) .line.voice { text-shadow: 0 0 22px rgba(255, 186, 110, 0.32), 0 1px 3px rgba(10, 8, 6, 0.75); }
+  .line.voice.sutra .ch { transition-delay: calc(var(--i) * 180ms); transition-duration: 1.8s, 2.2s, 2.2s; }
+  /* in the dark of the night, the line alone, centred */
+  body:not(.out) .line.voice.dream { left: 50%; top: 24%; color: #e9d6b4; text-shadow: 0 0 26px rgba(255, 200, 140, 0.22); }
+  html:lang(en) .line.voice::before { display: none; }
+  html:lang(en) .line.voice .ch { transform: translateY(0.15em); transition-delay: calc(var(--i) * 70ms); }
+  html:lang(en) body:not(.out) .line.voice.dream { top: 40%; white-space: normal; width: min(86vw, 620px); text-align: center; }
+
+  /* The errand, top-left: name, then the four things */
+  #task {
+    position: absolute; left: calc(22px + env(safe-area-inset-left)); top: calc(20px + env(safe-area-inset-top));
+    color: var(--ink); text-shadow: var(--shadow); opacity: 0; transform: translateY(-4px);
+    transition: opacity 1.4s ease, transform 1.4s ease;
+  }
+  #task.show { opacity: 1; transform: none; }
+  #task .tk-name { font-size: 12px; letter-spacing: 0.5em; opacity: 0.6; margin-bottom: 10px; }
+  #task .tk-items { display: flex; gap: 16px; }
+  #task .tk-items span {
+    position: relative; font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 20px; line-height: 1;
+    opacity: 0.32; transition: opacity 0.8s ease;
+  }
+  #task .tk-items span::after {
+    content: ''; position: absolute; left: 50%; top: calc(100% + 7px); width: 4px; height: 4px; margin-left: -2px;
+    border-radius: 50%; border: 1px solid currentColor; box-sizing: border-box; transition: background 0.8s ease, border-color 0.8s ease;
+  }
+  #task .tk-items span.carried { opacity: 0.7; }
+  #task .tk-items span.carried::after { border-color: var(--ember); background: var(--ember); }
+  #task .tk-items span.home { opacity: 1; }
+  #task .tk-items span.home::after { background: currentColor; }
+  html:lang(en) #task .tk-name { letter-spacing: 0.18em; text-transform: uppercase; font-size: 11px; }
+  html:lang(en) #task .tk-items span { font-family: "Cormorant Garamond", Georgia, serif; font-style: italic; font-size: 17px; }
+
+  /* Answers to the Buddha */
+  #choices {
+    position: absolute; left: 50%; bottom: calc(12% + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; width: min(92vw, 640px);
+    opacity: 0; visibility: hidden; transition: opacity 1.2s ease, visibility 1.2s;
+  }
+  #choices.show { opacity: 1; visibility: visible; pointer-events: auto; }
+  #choices button {
+    font: inherit; font-size: 16px; letter-spacing: 0.3em; color: var(--ink); cursor: pointer;
+    padding: 12px 16px 12px 26px; border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.42); background: rgba(20, 26, 28, 0.38);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: background 0.3s ease;
+  }
+  #choices button:hover { background: rgba(255, 255, 255, 0.14); }
+  #choices button.quiet { border-color: transparent; background: none; opacity: 0.7; letter-spacing: 0.1em; padding-left: 16px; }
+  html:lang(en) #choices button { font-size: 19px; letter-spacing: 0.03em; padding: 10px 20px; }
+  #title {
+    position: absolute; left: 50%; top: calc(5% + env(safe-area-inset-top)); transform: translateX(-50%);
+    writing-mode: vertical-rl; text-align: center;
+    font-family: "Ma Shan Zheng", "Noto Serif SC", serif;
+    font-size: clamp(64px, 16vmin, 120px); letter-spacing: 0.15em;
+    text-shadow: 0 2px 30px rgba(30, 40, 42, 0.45);
+    opacity: 0; transition: opacity 2.4s ease, filter 2.4s ease; filter: blur(8px);
+  }
+  #title.show { opacity: 1; filter: blur(0); }
+  /* On wide screens the title sits to the left of the temple instead of over it. */
+  @media (min-aspect-ratio: 1/1) { #title { left: 22%; top: 12%; font-size: clamp(64px, 13vmin, 110px); } }
+  #title small {
+    display: block; font-family: "Noto Serif SC", serif; font-size: 0.17em;
+    letter-spacing: 0.8em; margin-right: 0.9em; opacity: 0.85;
+  }
+  .seal {
+    display: inline-block; margin-top: 0.4em;
+    font-family: "Ma Shan Zheng", serif; font-size: 0.2em; letter-spacing: 0;
+    color: #f7e9e2; background: #9c2f25; padding: 0.25em 0.2em; border-radius: 3px;
+    text-shadow: none; writing-mode: vertical-rl;
+  }
+
+  #hint {
+    position: absolute; left: 50%; bottom: calc(5% + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    font-size: 14px; letter-spacing: 0.5em; padding: 10px 6px 10px 24px;
+    color: var(--ink); text-shadow: var(--shadow); white-space: nowrap;
+    opacity: 0; transition: opacity 0.9s ease;
+  }
+  body.out #hint { background: radial-gradient(closest-side, rgba(236, 240, 238, 0.6), rgba(236, 240, 238, 0)); padding: 16px 20px 16px 38px; }
+  #hint.show { opacity: 1; animation: breathe 2.8s ease-in-out infinite; }
+  @keyframes breathe { 50% { opacity: 0.45; } }
+
+  #ring {
+    position: absolute; left: 50%; top: 50%; width: 92px; height: 92px;
+    margin: -46px 0 0 -46px; opacity: 0; transition: opacity 0.4s ease;
+  }
+  #ring.show { opacity: 1; }
+  #ring circle { fill: none; stroke-linecap: round; }
+
+  #fade {
+    position: fixed; inset: 0; pointer-events: none; background: #0f1214;
+    opacity: 1; transition: opacity 1.8s ease;
+  }
+  #fade.warm { background: #ffe8c8; }
+  /* words that stay above the dark (the dream line at night) */
+  #over { position: fixed; inset: 0; pointer-events: none; }
+
+  /* Corner controls: language + music */
+  #corner {
+    position: fixed; top: calc(14px + env(safe-area-inset-top)); right: 14px; z-index: 5;
+    display: flex; gap: 10px; opacity: 0; transition: opacity 1.2s ease;
+  }
+  #corner.show { opacity: 1; }
+  .icon {
+    width: 36px; height: 36px; padding: 0; border-radius: 50%; cursor: pointer;
+    display: grid; place-items: center; color: var(--ink);
+    border: 1px solid rgba(255, 255, 255, 0.3); background: rgba(20, 26, 28, 0.28);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    opacity: 0.82; transition: opacity 0.3s ease, background 0.3s ease;
+  }
+  .icon:hover, .icon[aria-expanded="true"] { opacity: 1; }
+  .icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+  #musicBtn .slash { opacity: 0; transition: opacity 0.3s ease; }
+  #musicBtn.off .slash { opacity: 1; }
+  #musicBtn.off .note { opacity: 0.4; }
+  body.out .icon { border-color: rgba(30, 37, 35, 0.28); background: rgba(236, 240, 238, 0.42); }
+
+  .langWrap { position: relative; }
+  #langMenu {
+    position: absolute; top: 44px; right: 0; min-width: 112px; padding: 5px;
+    display: flex; flex-direction: column; gap: 2px; border-radius: 12px;
+    background: rgba(20, 26, 28, 0.62); border: 1px solid rgba(255, 255, 255, 0.14);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    opacity: 0; visibility: hidden; transform: translateY(-4px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+  }
+  #langMenu.open { opacity: 1; visibility: visible; transform: none; }
+  body.out #langMenu { background: rgba(236, 240, 238, 0.78); border-color: rgba(30, 37, 35, 0.14); }
+  #langMenu button {
+    font: 14px/1 "Noto Serif SC", serif; color: var(--ink); text-shadow: none;
+    background: none; border: 0; border-radius: 8px; padding: 9px 12px; cursor: pointer;
+    text-align: left; white-space: nowrap; opacity: 0.72;
+  }
+  #langMenu button:lang(en) { font-family: "Cormorant Garamond", serif; font-size: 16px; }
+  #langMenu button:lang(ja) { font-family: "Noto Serif JP", serif; }
+  #langMenu button:hover { opacity: 1; }
+  #langMenu button.on { opacity: 1; background: rgba(255, 255, 255, 0.12); }
+  body.out #langMenu button.on { background: rgba(30, 37, 35, 0.08); }
+
+  /* Japanese: Japanese glyph forms; slightly tighter spacing for longer prompts */
+  html:lang(ja) body { font-family: "Noto Serif JP", "Hiragino Mincho ProN", serif; }
+  html:lang(ja) #title small { font-family: "Noto Serif JP", serif; }
+  html:lang(ja) #hint { letter-spacing: 0.22em; padding-left: 14px; }
+  html:lang(ja) body.out #hint { padding-left: 28px; }
+
+  /* English: everything runs horizontally */
+  html:lang(en) body { font-family: "Cormorant Garamond", Georgia, serif; }
+  html:lang(en) #title {
+    writing-mode: horizontal-tb; font-family: "Cormorant Garamond", Georgia, serif; font-weight: 500;
+    font-size: clamp(36px, 9vmin, 66px); letter-spacing: 0.03em; white-space: nowrap; top: calc(9% + env(safe-area-inset-top));
+  }
+  html:lang(en) #title small {
+    font-family: inherit; font-size: 0.34em; font-weight: 500; letter-spacing: 0.26em; margin: 0.6em 0 0; text-transform: uppercase; opacity: 1;
+  }
+  @media (min-aspect-ratio: 1/1) { html:lang(en) #title { left: 50%; top: 8%; } }
+  html:lang(en) .line.v {
+    writing-mode: horizontal-tb; font-style: italic; font-size: clamp(22px, 5.4vmin, 32px);
+    letter-spacing: 0.02em; line-height: 1.3; padding: 16px 30px; text-align: right;
+    top: calc(11% + env(safe-area-inset-top)); right: 3vw;
+  }
+  html:lang(en) .line.v.left { text-align: left; right: auto; left: 3vw; top: calc(18% + env(safe-area-inset-top)); }
+  html:lang(en) body.out .line.v { background: radial-gradient(closest-side, rgba(236, 240, 238, 0.82) 40%, rgba(236, 240, 238, 0)); }
+  html:lang(en) body:not(.out) .line.v { background: radial-gradient(closest-side, rgba(15, 18, 20, 0.55) 40%, rgba(15, 18, 20, 0)); }
+  html:lang(en) #hint { font-size: 17px; letter-spacing: 0.06em; padding: 10px 14px; }
+  html:lang(en) body.out #hint { padding: 16px 28px; }
+  html:lang(en) #again { font-size: 18px; letter-spacing: 0.06em; padding: 12px 24px; }
+  #again { white-space: nowrap; }
+  html:lang(en) #loading { font-size: 16px; letter-spacing: 0.3em; font-style: italic; }
+
+  #again {
+    position: absolute; left: 50%; bottom: calc(14% + env(safe-area-inset-bottom));
+    transform: translateX(-50%); pointer-events: auto; cursor: pointer;
+    font-family: inherit; font-size: 15px; letter-spacing: 0.5em; color: var(--ink);
+    padding: 12px 18px 12px 30px; border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(20, 26, 28, 0.35);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    opacity: 0; visibility: hidden; transition: opacity 1.6s ease;
+  }
+  #again.show { opacity: 1; visibility: visible; }
+
+  #loading {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    font-size: 13px; letter-spacing: 0.6em; color: var(--ink-dim);
+    transition: opacity 1s ease; pointer-events: none;
+  }
+  #err { position: fixed; left: 12px; right: 12px; bottom: 12px; color: #ffb4a8; font: 12px/1.4 monospace; white-space: pre-wrap; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body class="out">
+  <div id="stage"></div>
+  <div id="bars"><i></i><i></i></div>
+  <div id="ui">
+    <div id="title">一炷香<small>序章 · 雪寺</small></div>
+    <div id="lines"></div>
+    <svg id="ring" viewBox="0 0 92 92">
+      <circle cx="46" cy="46" r="38" stroke="rgba(255,255,255,0.22)" stroke-width="2" />
+      <circle id="ringFill" cx="46" cy="46" r="38" stroke="#ffcf94" stroke-width="2.5"
+        stroke-dasharray="238.8" stroke-dashoffset="238.8" transform="rotate(-90 46 46)" />
+    </svg>
+    <div id="hint"></div>
+    <div id="choices"></div>
+    <div id="task"></div>
+    <button id="again" type="button">再上一炷香</button>
+  </div>
+  <div id="fade"></div>
+  <div id="over"></div>
+  <div id="loading">雪 落 中</div>
+  <div id="corner">
+    <div class="langWrap">
+      <button id="langBtn" class="icon" type="button" aria-haspopup="true" aria-expanded="false" aria-label="语言">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5" />
+          <ellipse cx="12" cy="12" rx="3.6" ry="8.5" />
+          <path d="M3.8 9h16.4M3.8 15h16.4" />
+        </svg>
+      </button>
+      <div id="langMenu" role="menu"></div>
+    </div>
+    <button id="musicBtn" class="icon" type="button" aria-pressed="true" aria-label="音乐">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <g class="note">
+          <path d="M9.5 17.5V5.5l9-2v11.5" />
+          <circle cx="7.3" cy="17.6" r="2.2" />
+          <circle cx="16.3" cy="15.1" r="2.2" />
+        </g>
+        <path class="slash" d="M4 4l16 16" />
+      </svg>
+    </button>
+  </div>
+  <div id="err"></div>
+  <script>
+    window.addEventListener('error', (e) => { document.getElementById('err').textContent = String(e.message || e); });
+  </script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
