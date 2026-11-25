@@ -94,6 +94,7 @@ export class Nian {
     this.rainK = 0;       // 0..1: how hard it is falling
     this.rainWind = new THREE.Vector3(0.45, 0, 0.42);
     this.elderSpeed = 0.34; // path points per second
+    this.elderLook = null; // who the grandmother turns to once she has stopped
 
     const tx = NIAN.x, tz = NIAN.z, ty = valleyHeight(tx, tz);
     this.treePos = new THREE.Vector3(tx, ty, tz);
@@ -572,9 +573,9 @@ export class Nian {
       // she stops where 阿念 reaches her
       if (this.elder.position.distanceTo(this.girl.position) < 1.3) this.elderWalking = false;
     } else if (this.elder.visible) {
-      // stopped: she turns to 阿念
-      const e = this.elder.position, gp = this.girl.position;
-      if (Math.hypot(gp.x - e.x, gp.z - e.z) < 4) this.elder.rotation.y = angleDamp(this.elder.rotation.y, yawTo(e.x, e.z, gp.x, gp.z), 3, dt);
+      // stopped: she turns to 阿念 (or to whoever she is talking to)
+      const e = this.elder.position, gp = this.elderLook || this.girl.position;
+      if (this.elderLook || Math.hypot(gp.x - e.x, gp.z - e.z) < 4) this.elder.rotation.y = angleDamp(this.elder.rotation.y, yawTo(e.x, e.z, gp.x, gp.z), 3, dt);
     }
     if (this.elderMixer && this.elder.visible) {
       this._elderPlay(this.elderWalking ? 'Walking' : 'Idle_4');

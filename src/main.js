@@ -1244,13 +1244,30 @@ function updateValley(dt) {
     if (still) holdTotal += dt;
     // held, the view drifts slowly in among the hanging petals; let go, it eases back
     pushK = damp(pushK, still ? 1 : 0, still ? 0.32 : 1.4, dt);
-    if (still && holdTotal > 1.2 && hintKey === 'keep') hint('');
-    if (still && holdTotal > 1.8) once('h1', () => thought('h1', 2.8));
-    if (still && holdTotal > 6.0) once('h2', () => { thought('h2', 3.4); after(3.8, () => { if (holding) hint('nLet'); }); });
+    const t = stateTime;
+    // the traveler thinking aloud: what is happening, and what one might wish
+    if (t > 1.4) once('m1', () => thought('m1', 3.2));
+    if (t > 4.8) once('m2', () => thought('m2', 3.2));
+    if (t > 8.2 && !fired.has('h-first')) once('m3', () => { thought('m3', 3.8); after(1.4, () => { if (!fired.has('h-first')) hint('keep'); }); });
+    if (t > 24 && !fired.has('h-first')) once('m3b', () => { thought('m3', 3.8); hint('keep'); });
+    if (still && hintKey === 'keep') hint('');
+    // held: it stops; so does she; so would the one she is waiting for
+    if (still && holdTotal > 1.4) once('h1', () => thought('h1', 3.2));
+    if (still && holdTotal > 5.0) once('h2', () => thought('h2', 3.4));
+    if (still && holdTotal > 8.8) once('h3', () => {
+      thought('h3', 3.8);
+      after(4.4, () => { thought('r1', 3.6); if (holding) after(1.2, () => { if (holding) hint('nLet'); }); });
+    });
     if (!still && hintKey === 'nLet') hint('');
-    holdCamera(stateTime, portrait, pushK);
+    // once the traveler has seen what holding does (or after a while anyway), the petals fall
+    // again and her grandmother comes into sight down the path
+    if ((fired.has('h2') || t > 36) && !still && !fired.has('elderGo')) {
+      fired.add('elderGo');
+      after(1.8, () => { nian.elderComes(1); after(2.2, () => voice(['g9'], GIRL)); });
+    }
+    holdCamera(t, portrait, pushK);
     // she has come far enough: the last gust, and she walks in under it
-    if (nian.progress > 0.8 && !still) { hint(''); flow = 1; grade.uniforms.uStill.value = 0; setState('nEnd'); }
+    if (fired.has('elderGo') && nian.elder.visible && nian.progress > 0.8 && !still) { hint(''); flow = 1; grade.uniforms.uStill.value = 0; setState('nEnd'); }
   }
 
   // the meeting: the traveler stops and turns to her; a quiet two-shot from the side
@@ -1310,7 +1327,6 @@ function startHold() {
   bodyY = null; placeWalkerOut();
   nian.lookAt = tp;
   nian.startWind();
-  nian.elderComes();
   sound.ambience({ wind: 0.34, drone: 0, muffle: false });
   valley.petals.uniforms.uWind.value.set(1.1, 0, 0.55);
   flow = 1; wasStill = false; holdTotal = 0; pushK = 0;
@@ -1331,7 +1347,7 @@ function holdCamera(t, portrait, push = 0) {
     // (from the tree's far side, so 阿念 and the traveler sit at the edge of the frame and the
     // path where the grandmother stands is clear in the middle)
     wantPos.lerp(v3.set(tp.x + 0.3, tp.y + 1.65, tp.z + 3.2), k);
-    wantLook.lerp(v3.set(tp.x - 2.4, tp.y + 1.8, tp.z - 6), k);
+    wantLook.lerp(v3.set(tp.x - 1.9, tp.y + 1.3, tp.z - 2.4), k);
   }
   camLag = 1.2;
 }
@@ -1340,8 +1356,10 @@ function holdCamera(t, portrait, push = 0) {
 function updateNianEnd(dt, portrait) {
   const t = stateTime, tp = nian.treePos;
   // from the wide shot, the view drifts down the path to where they meet
-  holdCamera(t, portrait);
-  wantLook.lerp(tmp.set(tp.x - 2.8, tp.y + 1.3, tp.z - 7), ss(t, 3, 9));
+  if (!closeShot) {
+    holdCamera(t, portrait);
+    wantLook.lerp(tmp.set(tp.x - 2.8, tp.y + 1.3, tp.z - 7), ss(t, 3, 9));
+  }
   if (t > 0.2) once('ne2', () => {
     nian.gust();
     sound.ambience({ wind: 0.7, drone: 0, muffle: false });
@@ -1354,15 +1372,58 @@ function updateNianEnd(dt, portrait) {
   if (t > 4.8) once('ne6', () => { nian.lookAt = null; nian.runTo = nian.elderPos; nian.girlMode = 'run'; voice(['g7'], GIRL); });
   if (t > 9.4) once('ne7', () => voice(['g8'], GIRL));
   if (t > 12.8) once('ne8', () => voice(['o2', 'o3'], ELDER));
-  if (t > 20.8) once('ne9', () => { nian.lookAt = P; nian.girlMode = 'wave'; });
-  if (t > 24.3) once('ne10', () => { fadeEl.classList.add('pale'); fade(1, false, 4200); sound.musicLevel(0.4, 6); });
-  if (t > 29.3) once('ne11', () => {
-    titleMain = 'ch1Title'; titleSub = 'ch1End'; renderTitle();
-    document.body.classList.add('ended');
-    titleEl.classList.add('show');
-    againEl.classList.add('show');
+  // closer: the grandmother turns to the traveler and greets them
+  if (t > 19.4) once('nc0', () => fade(1, false, 700));
+  if (t > 20.3) once('nc1', () => {
+    closeShot = true;
+    const e = nian.elder.position, g = nian.girl.position;
+    let ux = g.x - e.x, uz = g.z - e.z;
+    const ul = Math.hypot(ux, uz) || 1; ux /= ul; uz /= ul;
+    // the traveler a couple of steps off to her side, 阿念 at her other hand
+    let sx = -uz, sz = ux;
+    if (sz < 0) { sx = -sx; sz = -sz; } // the side toward the tree, where the traveler was
+    P.x = e.x + sx * 1.5 - ux * 0.3; P.z = e.z + sz * 1.5 - uz * 0.3; P.vx = P.vz = 0;
+    closeU.set(ux, 0, uz); closeS.set(sx, 0, sz);
+    P.yaw = Math.atan2(-(e.x - P.x), -(e.z - P.z));
+    bodyY = null; placeWalkerOut();
+    nian.girlMode = 'idle'; nian.runTo = null;
+    nian.lookAt = P; nian.elderLook = P;
+    closeCamera(portrait);
+    camPos.copy(wantPos); camLook.copy(wantLook);
+    fade(0, false, 1000);
+    after(1.4, () => {
+      const a = voice(['o4'], ELDER);
+      after(a + 0.3, () => {
+        const b = voice(['o5', 'o6'], ELDER);
+        after(b + 0.2, () => {
+          const c = voice(['o7'], ELDER);
+          after(c + 0.6, () => {
+            nian.girlMode = 'wave';
+            after(3.6, () => { fadeEl.classList.add('pale'); fade(1, false, 4200); sound.musicLevel(0.4, 6); });
+            after(8.6, () => {
+              titleMain = 'ch1Title'; titleSub = 'ch1End'; renderTitle();
+              document.body.classList.add('ended');
+              titleEl.classList.add('show');
+              againEl.classList.add('show');
+            });
+          });
+        });
+      });
+    });
   });
+  if (closeShot) closeCamera(portrait);
   if (nian.girlMode === 'run') nian.runTo = nian.elderPos;
+}
+let closeShot = false;
+// Over the traveler's shoulder: the grandmother's face, 阿念 at her side.
+const closeU = new THREE.Vector3(), closeS = new THREE.Vector3();
+function closeCamera(portrait) {
+  const e = nian.elder.position, back = portrait ? 1.9 : 1.25;
+  const cx = P.x + closeS.x * back + closeU.x * 0.5, cz = P.z + closeS.z * back + closeU.z * 0.5;
+  wantPos.set(cx, valleyHeight(P.x, P.z) + 1.62, cz);
+  const lx = e.x + closeU.x * 0.45, lz = e.z + closeU.z * 0.45;
+  wantLook.set(lx, valleyHeight(e.x, e.z) + 1.2, lz);
+  camLag = 0.9;
 }
 
 /** The incense stick; runs after the camera moves, since it is held just below the view. */
@@ -1523,7 +1584,7 @@ window.__game = {
     if (target === 'nianEnd') {
       fade(1, false, 10); goValley(); fade(0, false, 600);
       const g = nian.girl.position; P.x = g.x - 1.2; P.z = g.z + 2.2; P.yaw = 0; placeWalkerOut();
-      fired.add('nTalk'); nian.standNow(); nian.ready.then(() => { startHold(); nian.windNow(); nian.elderK = 0.8 * (nian.elderPath.length - 1); hint(''); setState('nEnd'); });
+      fired.add('nTalk'); nian.standNow(); nian.ready.then(() => { startHold(); nian.windNow(); fired.add('elderGo'); nian.elderComes(0.8 * (nian.elderPath.length - 1)); hint(''); setState('nEnd'); });
     }
     if (target === 'talk1') {
       // the incense already offered, the first talk begins
