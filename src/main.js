@@ -53,16 +53,21 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 const grade = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVig: { value: 0.32 }, uWarm: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVig: { value: 0.32 }, uWarm: { value: 0 }, uNight: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uTime; uniform float uVig; uniform float uWarm; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float uTime; uniform float uVig; uniform float uWarm; uniform float uNight; varying vec2 vUv;
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
     void main(){
       vec4 c = texture2D(tDiffuse, vUv);
       vec2 d = vUv - 0.5;
       float v = smoothstep(0.85, 0.2, length(d * vec2(1.0, 1.15)));
       c.rgb *= mix(1.0 - uVig, 1.0, v);
+      // night: everything cool sinks into a moonlit blue; warm light (lanterns, windows) stays
+      float nl = dot(c.rgb, vec3(0.299,0.587,0.114));
+      float warmth = max(smoothstep(0.04, 0.22, c.r - c.b), smoothstep(0.06, 0.2, (c.r - c.b) / max(c.r, 0.001)) * smoothstep(0.45, 0.75, nl));
+      warmth = max(warmth, smoothstep(0.76, 0.86, max(c.r, max(c.g, c.b))));
+      c.rgb = mix(c.rgb, c.rgb * mix(vec3(0.3, 0.37, 0.52), vec3(1.08, 1.0, 0.92), warmth), uNight);
       // gentle split tone: cool shadows, warm highlights
       float l = dot(c.rgb, vec3(0.299,0.587,0.114));
       c.rgb += mix(vec3(-0.012, 0.0, 0.018), vec3(0.025, 0.01, -0.02) * (1.0 + uWarm), smoothstep(0.2, 0.8, l));
@@ -232,8 +237,9 @@ function updateNianTask() {
 // Waiting long enough also counts as silence.
 const choicesEl = $('choices');
 let choiceDone = null;
-// quiet: also offer "……" (and waiting 14 s counts as that); off for a line the traveler just says
-function ask(keys, done, { quiet = true } = {}) {
+// quiet: also offer "……" (and waiting 14 s counts as that); off for a line the traveler just says.
+// wait: with quiet off, the first reply is said by itself after this many seconds.
+function ask(keys, done, { quiet = true, wait = 0 } = {}) {
   choicesEl.innerHTML = '';
   const all = quiet ? [...keys, 'sil'] : [...keys];
   all.forEach((k, i) => {
@@ -249,6 +255,7 @@ function ask(keys, done, { quiet = true } = {}) {
   if (locked()) document.exitPointerLock();
   const mine = (choiceDone = done);
   if (quiet) after(14, () => { if (choiceDone === mine) answer('sil'); });
+  else if (wait) after(wait, () => { if (choiceDone === mine) answer(keys[0]); });
 }
 function answer(k) {
   if (!choiceDone) return;
@@ -639,6 +646,21 @@ function updateOutside(dt) {
   outside.update(dt);
   const portrait = camera.aspect < 0.8;
 
+  if (state === 'snowNight') {
+    // a slow drift past the temple in the falling snow; the line; then away to the valley
+    const t = stateTime;
+    takeTap();
+    walker.group.visible = false;
+    wantPos.lerpVectors(SNOW_FROM, SNOW_TO, ss(t, 0, 13));
+    wantLook.copy(SNOW_LOOK);
+    camLag = 1.2;
+    if (t > 0.3) once('sn-in', () => fade(0, false, 3200));
+    if (t > 3.0) once('sn-line', () => { lines.dream = say('sutra', 'v'); sound.bowl(294, 0.14); });
+    if (t > 9.5) once('sn-x', () => unsay(lines.dream));
+    if (t > 10.5) once('sn-out', () => fade(1, false, 2400));
+    if (t > 13.2) once('sn-go', () => goValley());
+  }
+
   if (state === 'title') {
     const s = stateTime;
     wantPos.set(Math.sin(s * 0.05) * 1.2, 6.2, 51);
@@ -892,6 +914,22 @@ function goodNight() {
   setState('rest');
 }
 
+// Asleep: outside, the temple in the night snow, the lanterns lit. One line, then morning
+// somewhere else.
+const SNOW_FROM = new THREE.Vector3(7.2, 2.4, 13.5), SNOW_TO = new THREE.Vector3(4.6, 2.1, 12.2), SNOW_LOOK = new THREE.Vector3(-0.6, 4.9, -5);
+function snowNight() {
+  activeScene = 'out';
+  document.body.classList.add('out');
+  renderPass.scene = outside.scene;
+  bloom.strength = 0.6; bloom.threshold = 0.85;
+  grade.uniforms.uVig.value = 0.45; grade.uniforms.uWarm.value = 0.12; grade.uniforms.uNight.value = 1;
+  sound.ambience({ wind: 0.35, drone: 0, muffle: false });
+  walker.group.visible = false;
+  setState('snowNight');
+  camPos.copy(SNOW_FROM); camLook.copy(SNOW_LOOK);
+  wantPos.copy(SNOW_FROM); wantLook.copy(SNOW_LOOK);
+}
+
 // The errand: the traveler rises, and the view comes back up outside the closed door,
 // looking out over the snow where the lost things now glow.
 function leaveInside() {
@@ -1089,7 +1127,7 @@ function updateInside(dt) {
       thought('thx', 2.6);
       sound.bowl(523, 0.12);
       after(3.0, () => { restFrom.copy(camPos); setState('sleep'); });
-    }, { quiet: false }));
+    }, { quiet: false, wait: 6 }));
   }
   if (state === 'sleep') {
     takeTap();
@@ -1112,13 +1150,7 @@ function updateInside(dt) {
     if (t > 15.6) once('z1', () => { unsay(lines.e1); unsay(lines.e2); fade(0.65, false, 1400); sound.musicLevel(0.5, 5); });
     if (t > 17.2) once('z2', () => fade(0.3, false, 1000));
     if (t > 18.4) once('z3', () => fade(1, false, 3000));
-    if (t > 22.4) once('e4', () => {
-      // asleep: only the line, in the dark
-      lines.dream = say('sutra', 'voice sutra dream', null, $('over'));
-      sound.bowl(294, 0.14);
-    });
-    if (t > 29.4) once('e5', () => unsay(lines.dream));
-    if (t > 31.4) once('e6', () => goValley());
+    if (t > 21.8) once('e4', snowNight);
   }
 
   if (state !== 'inWalk') { walkerIn.group.position.set(PI_.x, 0, PI_.z); walkerIn.group.rotation.y = PI_.yaw; }
@@ -1143,7 +1175,7 @@ function goValley() {
   document.body.classList.add('out');
   renderPass.scene = valley.scene;
   bloom.strength = 0.42; bloom.threshold = 0.9;
-  grade.uniforms.uVig.value = 0.3; grade.uniforms.uWarm.value = 0.3;
+  grade.uniforms.uVig.value = 0.3; grade.uniforms.uWarm.value = 0.3; grade.uniforms.uNight.value = 0;
   sound.ambience({ wind: 0.16, drone: 0, muffle: false });
   sound.musicLevel(0.75, 8);
   groundAt = valleyHeight;
@@ -1504,6 +1536,7 @@ window.__game = {
       camPos.copy(EYE_ALTAR); setState('talk');
       after(1.2, () => talk(TALK_FIRST, 0, () => after(0.8, leaveInside)));
     }
+    if (target === 'snow') { fired.add('visited'); quietComplete(); enterInside(); document.body.classList.remove('cine'); fade(1, false, 10); snowNight(); }
     if (target === 'night') { fired.add('visited'); quietComplete(); enterInside(); document.body.classList.remove('cine'); PI_.x = 0; PI_.z = INSIDE.stopZ; PI_.yaw = 0; camPos.copy(EYE_ALTAR); goodNight(); }
     if (target === 'talk2') { fired.add('visited'); quietComplete(); enterInside(); PI_.x = 0; PI_.z = INSIDE.stopZ + 0.3; PI_.yaw = 0; camPos.copy(EYE_ALTAR); setState('settle'); }
     if (target === 'door') { P.x = 0; P.z = DOOR.y + 0.6; P.yaw = 0; placeWalkerOut(); setState('walk'); }
