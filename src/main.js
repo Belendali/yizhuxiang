@@ -232,9 +232,10 @@ function updateNianTask() {
 // Waiting long enough also counts as silence.
 const choicesEl = $('choices');
 let choiceDone = null;
-function ask(keys, done) {
+// quiet: also offer "……" (and waiting 14 s counts as that); off for a line the traveler just says
+function ask(keys, done, { quiet = true } = {}) {
   choicesEl.innerHTML = '';
-  const all = [...keys, 'sil'];
+  const all = quiet ? [...keys, 'sil'] : [...keys];
   all.forEach((k, i) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -247,7 +248,7 @@ function ask(keys, done) {
   choicesEl.classList.add('show');
   if (locked()) document.exitPointerLock();
   const mine = (choiceDone = done);
-  after(14, () => { if (choiceDone === mine) answer('sil'); });
+  if (quiet) after(14, () => { if (choiceDone === mine) answer('sil'); });
 }
 function answer(k) {
   if (!choiceDone) return;
@@ -1082,15 +1083,13 @@ function updateInside(dt) {
     wantLook.lerpVectors(BUDDHA_FACE, BED_LOOK, ss(t, 0.8, 4.4));
     camLag = 0.9;
     inside.showBed(ss(t, 1.6, 4.6));
-    if (t > 4.8) once('r-hint', () => hint('act:thank'));
-    const tap = takeTap();
-    if (t > 4.8 && tap && !fired.has('thanked')) {
-      fired.add('thanked');
-      hint('');
+    takeTap();
+    // the traveler's answer is a bubble to tap: 谢谢
+    if (t > 4.8) once('r-ask', () => ask(['thx'], () => {
       thought('thx', 2.6);
       sound.bowl(523, 0.12);
       after(3.0, () => { restFrom.copy(camPos); setState('sleep'); });
-    }
+    }, { quiet: false }));
   }
   if (state === 'sleep') {
     takeTap();
