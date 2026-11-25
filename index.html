@@ -65,6 +65,9 @@
   /* indoors the words stand beside the Buddha, not over the face */
   body:not(.out) .line.voice { left: calc(76% + var(--x, 0em)); top: calc(12% + env(safe-area-inset-top)); }
   @media (max-aspect-ratio: 4/5) { body:not(.out) .line.voice { left: calc(80% + var(--x, 0em) * 0.8); } }
+  /* 阿念 and her grandmother speak in the same columns, in their own ink */
+  body.out .line.voice.girl { color: #8c3446; font-size: clamp(19px, 4.8vmin, 28px); }
+  body.out .line.voice.elder { color: #4a3d30; }
   body.out .line.voice { color: #2a2016; background: radial-gradient(closest-side, rgba(236, 240, 238, 0.55), rgba(236, 240, 238, 0)); }
   body:not(.out) .line.voice.sutra { top: 14%; font-size: clamp(26px, 7vmin, 44px); letter-spacing: 0.4em; color: #ffe2b0; }
   html:lang(ja) .line.voice { font-family: "Noto Serif JP", serif; font-weight: 600; font-size: clamp(19px, 4.8vmin, 28px); }
@@ -138,6 +141,10 @@
   #task .tk-items span.carried::after { border-color: var(--ember); background: var(--ember); }
   #task .tk-items span.home { opacity: 1; }
   #task .tk-items span.home::after { background: currentColor; }
+  #task .tk-items.dots { gap: 10px; }
+  #task .tk-items.dots span { width: 8px; height: 8px; border-radius: 50%; border: 1px solid currentColor; box-sizing: border-box; opacity: 0.55; transition: background 0.8s ease, opacity 0.8s ease; }
+  #task .tk-items.dots span::after { display: none; }
+  #task .tk-items.dots span.home { background: currentColor; opacity: 1; }
   html:lang(en) #task .tk-name { letter-spacing: 0.18em; text-transform: uppercase; font-size: 11px; }
   html:lang(en) #task .tk-items span { font-family: "Cormorant Garamond", Georgia, serif; font-style: italic; font-size: 17px; }
 
@@ -202,6 +209,9 @@
     opacity: 1; transition: opacity 1.8s ease;
   }
   #fade.warm { background: #ffe8c8; }
+  #fade.pale { background: #f4ede9; }
+  /* the chapter's end: its title and the restart button rest above the fade */
+  body.ended #ui { z-index: 3; }
   /* words that stay above the dark (the dream line at night) */
   #over { position: fixed; inset: 0; pointer-events: none; }
 
@@ -298,9 +308,9 @@
 <script>
   // Version stamp: bump on every deploy so browsers fetch the new scripts and models
   // instead of a cached mix of old and new files.
-  window.__V = '2026-11-25b';
+  window.__V = '2026-11-25c';
   (function () {
-    const mods = ['main', 'exterior', 'interior', 'actor', 'traveler', 'fx', 'audio', 'repair', 'valley', 'i18n', 'models', 'materials', 'temple-detail'];
+    const mods = ['main', 'exterior', 'interior', 'actor', 'traveler', 'fx', 'audio', 'repair', 'valley', 'i18n', 'models', 'materials', 'temple-detail', 'anian'];
     const imports = {
       three: 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js',
       'three/addons/': 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/',

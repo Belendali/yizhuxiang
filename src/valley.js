@@ -12,6 +12,8 @@ const ss = THREE.MathUtils.smoothstep;
 
 export const VALLEY_START = { x: 2.3, z: 6.2 };
 const HERO = { x: 4.4, z: 4.6, s: 1.75 }; // the old tree the traveler wakes under
+// 阿念's tree, a little way down the path (her story lives in anian.js); kept clear of other trees
+export const NIAN = { x: 1.2, z: -12 };
 
 export function valleyPathX(z) {
   return Math.sin(z * 0.045) * 3.2 + Math.sin(z * 0.11) * 0.8;
@@ -110,6 +112,7 @@ export function buildValley() {
     const x = valleyPathX(z) + side * (3.2 + Math.pow(r(), 1.3) * 16);
     if (Math.hypot(x - VALLEY_START.x, z - VALLEY_START.z) < 4) continue;
     if (trees.some((t) => Math.hypot(t.x - x, t.z - z) < 3.4)) continue;
+    if (Math.hypot(x - NIAN.x, z - NIAN.z) < 5.5) continue;
     trees.push({ x, z, s: 0.8 + r() * 0.6 });
   }
   const woodParts = [];
@@ -258,7 +261,7 @@ export function buildValley() {
   scene.add(petals.points);
 
   return {
-    scene, colliders,
+    scene, colliders, petals,
     hero: new THREE.Vector3(HERO.x, valleyHeight(HERO.x, HERO.z), HERO.z),
     update(dt, center, vh) { petals.update(dt, center, vh); },
   };

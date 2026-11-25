@@ -27,7 +27,9 @@ Then open http://localhost:8000. It needs to be served over http because ES modu
 4. 修庙: the traveler rises and comes out onto the platform; the door closes behind. Four lost things now glow in the snow: the 雪寺 plaque (on the platform, right of the door), the chime from the front-left roof corner (behind the hall), a paper lantern (in the snow left of the path) and the hall's bronze singing bowl (right of the path; once home it sits on its cushion by the altar). Tap to pick one up; it floats at the traveler's shoulder and flies home once the traveler is back on the platform. The lanterns light again when theirs comes back. Until all four are home the door stays shut. With all four home the Buddha says "进来吧" and the door stands ajar.
 5. Back inside (no look-around this time), at the cushion, the second talk, with no question and no teaching: 多谢你 / 肯为一座旧庙停下的人 不多, then 今夜 安心睡吧 / 明早 雪会停 / 明天 再继续上路吧.
 6. Night: the view draws back from the altar (一炷香 / 故事开始), fades to black, and in the dark one quiet line, 雪 下了一夜. Then the traveler wakes in 落花谷: the temple is gone and the snow has stopped.
-7. 第一章 · 落花谷: the traveler wakes under an old blossom tree, seen through their eyes (blossom overhead, then the valley ahead), then the view draws back behind them. The temple is gone. Free walk (`src/valley.js`). The chapter's story and play are still to be designed.
+7. 第一章 · 落花谷: the traveler wakes under an old blossom tree, seen through their eyes (blossom overhead, then the valley ahead), then the view draws back behind them. The temple is gone. Free walk (`src/valley.js`).
+8. 阿念 (`src/anian.js`): a little way down the path a girl stands under a thinned blossom tree. Walking up to her starts a short talk: the blossom is nearly gone, her grandmother is not back yet, would you help put it back. Seven fallen sprigs glow in the grass around the valley; walk up to one and tap, and it flies up to the tree and that part of the crown blooms again (each one a rising note; the task list top-left shows 落花 and seven dots).
+9. When the tree is full: 奶奶一定会喜欢. A gust takes the whole crown at once; the grandmother comes up the path, 阿念 runs to her (花 都落了), and she answers 赶上了 / 落花的时候 最好看 (she came back for the falling). 阿念 waves to the traveler; the view fades to petal-white with 落花谷 · 第一章 · 完. The girl and the grandmother are turned stand-in figures until there are models for them.
 
 While the lost things are being found, a quiet list sits top-left: 匾 灯 铃 香, each with a dot (hollow = missing, ember = carried, filled = home).
 
@@ -65,11 +67,11 @@ Spots and dialogue live in `src/main.js` (`spots`, `TALK_FIRST`, `TALK_AFTER`); 
 
 ## Debug
 
-**Test switch:** the first of the three icons in the top-right corner (a path with three stops) opens a list of every world and story point (序章: 标题, 开场, 风雪, 台阶, 殿门, 进殿, 殿内, 上香, 对话一, 修庙, 归位, 对话二, 入夜; 第一章: 醒来, 漫步). Picking one reloads the page straight into that point (`?at=talk2`, etc.). Chapters not built yet are listed in grey.
+**Test switch:** the first of the three icons in the top-right corner (a path with three stops) opens a list of every world and story point (序章: 标题, 开场, 风雪, 台阶, 殿门, 进殿, 殿内, 上香, 对话一, 修庙, 归位, 对话二, 入夜; 第一章: 醒来, 漫步, 阿念, 找花, 落花祭). Picking one reloads the page straight into that point (`?at=talk2`, etc.). Chapters not built yet are listed in grey.
 
 **Deploying:** bump `window.__V` near the top of `index.html` before each push. Every script and model URL carries it (`?v=…`), so browsers load the new version instead of a cached mix of old and new files.
 
-In the browser console, `__game.jump('intro' | 'trudge' | 'stairs' | 'door' | 'inside' | 'walkin' | 'talk1' (incense offered, the first talk begins) | 'errand' (just out of the hall, things glowing) | 'repaired' | 'talk2' | 'night' | 'valley' | 'valleyWalk' | 'altar' | 'ending')` jumps to a state, and `__game.advance(seconds, holding)` fast-forwards the simulation. `__game.put(x, z)` moves the traveler outside, `__game.answer('a1a' | 'a1b' | 'sil')` answers the Buddha, and `__game.quest` is the repair quest.
+In the browser console, `__game.jump('intro' | 'trudge' | 'stairs' | 'door' | 'inside' | 'walkin' | 'talk1' (incense offered, the first talk begins) | 'errand' (just out of the hall, things glowing) | 'repaired' | 'talk2' | 'night' | 'valley' | 'valleyWalk' | 'nian' (walking up to 阿念) | 'nianQuest' (the sprigs glowing) | 'nianEnd' (the full tree, then the gust) | 'altar' | 'ending')` jumps to a state, and `__game.advance(seconds, holding)` fast-forwards the simulation. `__game.put(x, z)` moves the traveler outside, `__game.answer('a1a' | 'a1b' | 'sil')` answers the Buddha, and `__game.quest` is the repair quest and `__game.nian` 阿念's.
 
 ## Credits
 
