@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { propModel, propParts } from './models.js';
-import { valleyHeight, valleyPathX, NIAN, SPRIGS } from './valley.js';
+import { valleyHeight, valleyPathX, NIAN } from './valley.js';
 
-// 第一章 · 落花谷: 阿念 and her tree. Her blossom is falling and her grandmother is not back
-// yet; she asks the traveler to put the fallen sprigs back. Each sprig found flies home to
-// the tree and that part of the crown blooms again. When the tree is full a gust takes it
-// all, and the grandmother walks in: she came back for the falling (落花祭).
+// 第一章 · 落花谷: 阿念 and her tree in full bloom. Her grandmother said she would be back
+// today, and the wind is rising; 阿念 asks the traveler to keep the blossom for her.
+// Holding stops the world: the falling petals hang in the air, but 阿念 and the grandmother
+// far down the path stop too. Only when the traveler lets go does the grandmother come,
+// and she arrives with the last gust: 落花的时候 最好看 (落花祭).
 //
 // 阿念 is a rigged model (idle, run, bow); until it loads, and for the grandmother, a simple
 // turned figure stands in.
@@ -15,25 +16,6 @@ const ss = THREE.MathUtils.smoothstep;
 const damp = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * dt));
 const angleDamp = (a, b, rate, dt) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + d * (1 - Math.exp(-rate * dt)); };
 const yawTo = (x, z, tx, tz) => Math.atan2(-(tx - x), -(tz - z));
-const NOTES = [523, 587, 659, 784, 880, 1047, 1175]; // pentatonic, rising: each sprig home is the next note
-
-function glowTexture() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d');
-  // drawn on black and added to the scene (additive), so the sprite's square edge never shows
-  g.fillStyle = '#000';
-  g.fillRect(0, 0, 64, 64);
-  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grd.addColorStop(0, 'rgb(255,240,244)');
-  grd.addColorStop(0.3, 'rgb(128,95,105)');
-  grd.addColorStop(1, 'rgb(0,0,0)');
-  g.fillStyle = grd;
-  g.fillRect(0, 0, 64, 64);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
 
 function petalTexture() {
   const c = document.createElement('canvas');
@@ -107,11 +89,11 @@ export class Nian {
     this.active = false;
     this.done = false;
     this.t = 0;
-    this.onBloom = null; // (count, total) => {}
-    this.sprigs = [];
-    this.flights = [];
-    this.sectors = [];
     this.burst = null;
+    this.rain = null;     // the 3D petals coming off her tree
+    this.rainK = 0;       // 0..1: how hard it is falling
+    this.rainWind = new THREE.Vector3(0.45, 0, 0.42);
+    this.elderSpeed = 0.3; // path points per second
 
     const tx = NIAN.x, tz = NIAN.z, ty = valleyHeight(tx, tz);
     this.treePos = new THREE.Vector3(tx, ty, tz);
@@ -211,7 +193,7 @@ export class Nian {
     this.elderK = 0;
     this.elderWalking = false;
 
-    // ---------- her tree: the crown is split into seven parts that bloom back one by one ----------
+    // ---------- her tree, in full bloom; the wind thins it card by card ----------
     this.tree = null;
     this.ready = propModel('sakura', { part: 'small2', height: 4.9, anchor: 'bottom' }).then((m) => {
       m.position.copy(this.treePos).y -= 0.06;
@@ -226,8 +208,8 @@ export class Nian {
         this._splitCrown(o);
         this.foliageMap = o.material.map;
       });
-      this._makeSprigs();
     });
+    this._makeRain();
 
     // ---------- blossoms already fallen under her tree ----------
     propParts('blossom', { width: 0.24, anchor: 'bottom' }).then((parts) => {
@@ -266,7 +248,7 @@ export class Nian {
     this.burstT = -1;
   }
 
-  /** Reorder the foliage cards: the third still on the tree first, then seven sectors around it. */
+  /** Shuffle the foliage cards so the crown can thin evenly (a draw range over a random order). */
   _splitCrown(mesh) {
     const geo = mesh.geometry = mesh.geometry.clone();
     const idx = geo.index.array;
@@ -287,64 +269,100 @@ export class Nian {
       for (let j = 0; j < 3; j++) { const v = idx[t + j]; cd.c.x += pos.getX(v); cd.c.y += pos.getY(v); cd.c.z += pos.getZ(v); cd.n++; }
     }
     const list = [...cards.values()];
-    const box = new THREE.Box3();
-    for (const cd of list) { cd.c.divideScalar(cd.n); box.expandByPoint(cd.c); }
-    const mid = box.getCenter(new THREE.Vector3());
+    for (const cd of list) cd.c.divideScalar(cd.n);
     let s = 7;
     const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-    const base = [], rest = [];
-    for (const cd of list) (rnd() < 0.3 ? base : rest).push(cd);
-    rest.sort((a, b) => Math.atan2(a.c.z - mid.z, a.c.x - mid.x) - Math.atan2(b.c.z - mid.z, b.c.x - mid.x));
+    for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
     const out = [];
-    const push = (cd) => { for (const t of cd.tris) out.push(idx[t], idx[t + 1], idx[t + 2]); };
-    base.forEach(push);
-    const baseCount = out.length;
-    const per = Math.ceil(rest.length / 7);
-    for (let i = 0; i < 7; i++) {
-      const part = rest.slice(i * per, (i + 1) * per).sort(() => rnd() - 0.5);
-      const start = out.length;
-      const c = new THREE.Vector3();
-      for (const cd of part) { push(cd); c.add(cd.c); }
-      c.divideScalar(Math.max(1, part.length));
-      this.sectors.push({ start, end: out.length, centre: c, mesh, shown: false });
-    }
+    for (const cd of list) for (const t of cd.tris) out.push(idx[t], idx[t + 1], idx[t + 2]);
     geo.setIndex(new THREE.BufferAttribute(out.length > 65535 ? new Uint32Array(out) : new Uint16Array(out), 1));
-    this.crown = { geo, baseCount, full: out.length, count: baseCount, want: baseCount, cards: list, mid, mesh };
-    geo.setDrawRange(0, baseCount);
+    // the first 30% of cards (in draw order) are what stays after the last gust
+    const baseCount = Math.floor(out.length * 0.3 / 3) * 3;
+    this.crown = { geo, baseCount, full: out.length, count: out.length, want: out.length, cards: list, mesh };
+    geo.setDrawRange(0, out.length);
   }
 
-  /** Seven fallen sprigs around the valley, each a small branch of blossom lying in the grass. */
-  _makeSprigs() {
-    const tex = glowTexture();
-    SPRIGS.forEach(([dx, dz], i) => {
-      const x = this.treePos.x + dx, z = this.treePos.z + dz, y = valleyHeight(x, z);
-      // a blossoming branch lying in the grass (the model drops in when it has loaded)
-      const obj = new THREE.Group();
-      propModel('branch', { width: 0.85, anchor: 'bottom' }).then((m) => {
-        m.traverse((o) => { if (o.isMesh && !o.material.userData.lit) { o.material.userData.lit = true; o.material.emissive = new THREE.Color(0x4a2430); } });
-        obj.add(m);
-      }).catch((e) => console.warn('branch model not loaded', e));
-      obj.position.set(x, y - 0.02, z);
-      obj.rotation.set(0, i * 1.7, 0);
-      obj.visible = false;
-      this.scene.add(obj);
-      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xffd0dc, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending, fog: false }));
-      glow.scale.setScalar(2.2);
-      glow.position.set(x, y + 0.25, z);
-      glow.visible = false;
-      this.scene.add(glow);
-      const NM = 18;
-      const mg = new THREE.BufferGeometry();
-      mg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NM * 3), 3));
-      const motes = new THREE.Points(mg, new THREE.PointsMaterial({ color: 0xf7a9bf, size: 0.09, transparent: true, opacity: 0.9, depthWrite: false }));
-      motes.position.set(x, y, z);
-      motes.frustumCulled = false;
-      motes.visible = false;
-      this.scene.add(motes);
-      const seeds = Array.from({ length: NM }, (_, j) => [Math.random() * 6.28, 0.1 + Math.random() * 0.4, j / NM]);
-      this.sprigs.push({ obj, glow, motes, seeds, state: 'lying', x, z });
-    });
-    if (this.active) this.activate();
+  /** The petals that fall off her tree: three curled petal shapes and a few whole flowers. */
+  _makeRain() {
+    const KINDS = [['p1', 0.095, 100], ['p2', 0.09, 90], ['p3', 0.095, 90], ['flower', 0.13, 26]];
+    const n = KINDS.reduce((a, k) => a + k[2], 0);
+    this.rainP = new Float32Array(n * 3);
+    this.rainV = new Float32Array(n * 4);  // fall speed, sway phase, sway amount, spin speed
+    this.rainQ = Array.from({ length: n }, () => new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 6, Math.random() * 6, Math.random() * 6)));
+    this.rainAxis = Array.from({ length: n }, () => new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize());
+    this.rainS = new Float32Array(n);      // size; 0 = not falling yet
+    this.rainKinds = [];
+    for (let i = 0; i < n; i++) this._respawn(i, true);
+    let at = 0;
+    for (const [part, width, count] of KINDS) {
+      const kind = { from: at, count, meshes: [] };
+      at += count;
+      this.rainKinds.push(kind);
+      propParts('petals', { part, width, anchor: 'center' }).then((parts) => {
+        for (const p of parts) {
+          const mat = p.material.clone();
+          mat.side = THREE.DoubleSide;
+          mat.emissive = new THREE.Color(0x3a1c24); // a little glow so they read against the shade
+          const inst = new THREE.InstancedMesh(p.geometry, mat, count);
+          inst.frustumCulled = false;
+          inst.castShadow = true;
+          kind.meshes.push(inst);
+          this.scene.add(inst);
+        }
+      }).catch((e) => console.warn('petal model not loaded', e));
+    }
+  }
+
+  /** Put a petal back up in the crown (or, at the start, anywhere in the air under it). */
+  _respawn(i, anywhere = false) {
+    const P = this.rainP, V = this.rainV;
+    const tp = this.treePos;
+    let x, y, z;
+    const c = this.crown;
+    if (c && !anywhere && Math.random() < 0.75) {
+      // off a card still on the tree
+      const cd = c.cards[Math.floor(Math.random() * Math.max(1, (c.count / c.full) * c.cards.length))];
+      _v.copy(cd.c); c.mesh.localToWorld(_v);
+      x = _v.x; y = _v.y; z = _v.z;
+    } else {
+      const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 3.4;
+      x = tp.x + Math.cos(a) * r; z = tp.z + Math.sin(a) * r + 1.2;
+      y = tp.y + 0.3 + Math.random() * 4.0;
+    }
+    P[i * 3] = x; P[i * 3 + 1] = y; P[i * 3 + 2] = z;
+    V[i * 4] = 0.35 + Math.random() * 0.35;
+    V[i * 4 + 1] = Math.random() * 6.28;
+    V[i * 4 + 2] = 0.25 + Math.random() * 0.45;
+    V[i * 4 + 3] = 1.2 + Math.random() * 2.8;
+    this.rainS[i] = 0.75 + Math.random() * 0.5;
+  }
+
+  _updateRain(dt) {
+    if (!this.rainKinds) return;
+    const P = this.rainP, V = this.rainV, n = this.rainS.length, t = this.t, w = this.rainWind;
+    const live = Math.floor(n * this.rainK);
+    const tp = this.treePos;
+    for (let i = 0; i < n; i++) {
+      if (i >= live) continue;
+      const k = i * 3;
+      const sway = Math.sin(t * 1.3 + V[i * 4 + 1]) * V[i * 4 + 2];
+      P[k] += (w.x + sway) * dt;
+      P[k + 1] -= V[i * 4] * dt * (0.8 + Math.abs(Math.cos(t * 1.1 + V[i * 4 + 1])) * 0.4);
+      P[k + 2] += (w.z + Math.cos(t * 1.7 + V[i * 4 + 1]) * V[i * 4 + 2] * 0.6) * dt;
+      _q.setFromAxisAngle(this.rainAxis[i], V[i * 4 + 3] * dt);
+      this.rainQ[i].premultiply(_q);
+      const ground = valleyHeight(P[k], P[k + 2]) + 0.02;
+      if (P[k + 1] < ground || Math.hypot(P[k] - tp.x, P[k + 2] - tp.z) > 11) this._respawn(i);
+    }
+    for (const kind of this.rainKinds) {
+      for (let j = 0; j < kind.count; j++) {
+        const i = kind.from + j;
+        const on = i < live;
+        _m.compose(_v.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]), this.rainQ[i], _sc.setScalar(on ? this.rainS[i] : 0));
+        for (const inst of kind.meshes) inst.setMatrixAt(j, _m);
+      }
+      for (const inst of kind.meshes) inst.instanceMatrix.needsUpdate = true;
+    }
   }
 
   /** The traveler said hello: she gets up from her stone (then turns, via lookAt). */
@@ -363,47 +381,13 @@ export class Nian {
     else if (prev) prev.stop();
   }
 
-  get total() { return 7; }
-  get found() { return this.sprigs.filter((s) => s.state !== 'lying').length; }
-  get bloomed() { return this.sectors.filter((s) => s.shown).length; }
+  /** How far the grandmother has come, 0..1. */
+  get progress() { return this.elderK / (this.elderPath.length - 1); }
 
-  /** 阿念 has asked: the sprigs begin to glow. */
-  activate() {
-    this.active = true;
-    for (const s of this.sprigs) if (s.state === 'lying') s.obj.visible = s.glow.visible = s.motes.visible = true;
-  }
-
-  nearest(x, z, reach = 1.6) {
-    if (!this.active) return null;
-    let best = null, bd = reach;
-    for (const s of this.sprigs) {
-      if (s.state !== 'lying') continue;
-      const d = Math.hypot(s.x - x, s.z - z);
-      if (d < bd) { bd = d; best = s; }
-    }
-    return best;
-  }
-
-  /** Tap: the sprig lifts and flies to the next bare part of the crown. */
-  pick(s) {
-    s.state = 'flying';
-    s.motes.visible = false;
-    const sector = this.sectors.find((sc) => !sc.taken);
-    sector.taken = true;
-    const to = sector.mesh.localToWorld(sector.centre.clone());
-    this.flights.push({ s, sector, t: 0, from: s.obj.position.clone(), to, q0: s.obj.quaternion.clone() });
-    this.sound.bowl(1047, 0.05);
-  }
-
-  /** Everything home at once (debug). */
-  completeAll() {
-    this.active = true;
-    for (const s of this.sprigs) { s.state = 'home'; s.obj.visible = s.glow.visible = s.motes.visible = false; }
-    for (const sc of this.sectors) { sc.taken = sc.shown = true; }
-    this.flights.length = 0;
-    if (this.crown) { this.crown.want = this.crown.count = this.crown.full; this.crown.geo.setDrawRange(0, this.crown.full); }
-    this.done = true;
-  }
+  /** The wind rises: petals start to come off, the crown thins as the grandmother nears. */
+  startWind() { this.active = true; }
+  /** Debug: the wind already up and the petals falling. */
+  windNow() { this.active = true; this.rainK = 1; }
 
   /** The gust: the whole crown lets go at once. */
   gust() {
@@ -429,52 +413,23 @@ export class Nian {
   }
 
   /** The grandmother starts down the path toward the tree. */
-  elderComes() { this.elder.visible = true; this.elderWalking = true; this.elderK = 0; }
+  elderComes(k = 0) { this.elder.visible = true; this.elderWalking = true; this.elderK = k; }
 
   update(dt, traveler) {
     this.t += dt;
     const t = this.t;
 
-    // sprigs lying in the grass pulse softly, motes rising from them
-    for (const s of this.sprigs) {
-      if (s.state !== 'lying' || !this.active) continue;
-      const pulse = 0.7 + Math.sin(t * 1.8 + s.x) * 0.3;
-      s.glow.material.opacity = 0.5 + pulse * 0.4;
-      s.glow.scale.setScalar(1.8 + pulse * 0.7);
-      const arr = s.motes.geometry.attributes.position.array;
-      s.seeds.forEach(([a, r, o], i) => {
-        const k = (t * 0.25 + o) % 1;
-        arr[i * 3] = Math.cos(a + k * 2) * r * (1 - k * 0.5);
-        arr[i * 3 + 1] = 0.05 + k * 2.2;
-        arr[i * 3 + 2] = Math.sin(a + k * 2) * r * (1 - k * 0.5);
-      });
-      s.motes.geometry.attributes.position.needsUpdate = true;
-    }
-
-    // flights: up in an arc, spinning, into the crown; then that part blooms
-    for (let i = this.flights.length - 1; i >= 0; i--) {
-      const f = this.flights[i];
-      f.t += dt;
-      const k = ss(f.t / 1.6, 0, 1);
-      f.s.obj.position.lerpVectors(f.from, f.to, k);
-      f.s.obj.position.y += Math.sin(Math.PI * k) * 1.6;
-      f.s.obj.rotation.z += dt * 5;
-      f.s.obj.scale.setScalar(1 - k * 0.7);
-      f.s.glow.position.copy(f.s.obj.position);
-      f.s.glow.material.opacity = 0.7;
-      if (f.t >= 1.6) {
-        this.flights.splice(i, 1);
-        f.s.state = 'home';
-        f.s.obj.visible = f.s.glow.visible = false;
-        f.sector.shown = true;
-        const n = this.bloomed;
-        if (this.crown) this.crown.want = Math.max(this.crown.want, f.sector.end);
-        this.sound.bowl(NOTES[n - 1], 0.11);
-        this.hop = 1;
-        if (n === this.total) this.done = true;
-        if (this.onBloom) this.onBloom(n, this.total);
+    // the wind: more petals as it rises; the crown thins as the grandmother comes
+    if (this.active) {
+      this.rainK = Math.min(1, this.rainK + dt / 6);
+      if (this.crown && this.burstT < 0) {
+        const c = this.crown;
+        const want = c.full - (c.full - c.baseCount * 2) * Math.min(1, this.progress * 1.1);
+        c.want = Math.min(c.want, Math.floor(want / 3) * 3);
+        c.rate = 1;
       }
     }
+    this._updateRain(dt);
 
     // the crown fills (or empties) toward what it should show
     if (this.crown) {
@@ -569,7 +524,7 @@ export class Nian {
 
     // the grandmother: a slow walk up the path, the stick ticking along
     if (this.elderWalking) {
-      this.elderK = Math.min(this.elderPath.length - 1, this.elderK + dt * 0.45);
+      this.elderK = Math.min(this.elderPath.length - 1, this.elderK + dt * this.elderSpeed);
       const i = Math.floor(this.elderK), f = this.elderK - i;
       const a = this.elderPath[i], b = this.elderPath[Math.min(i + 1, this.elderPath.length - 1)];
       this.elder.position.lerpVectors(a, b, f);
@@ -584,3 +539,4 @@ export class Nian {
   /** Where the grandmother is now (for the girl to run to). */
   get elderPos() { return this.elder.position; }
 }
+const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _sc = new THREE.Vector3();

@@ -31,9 +31,9 @@ const S = {
     q1: '你一路走来　在找什么', a1a: '一个去处', a1b: '我不记得了', aSil: '……',
     r1a: '去处　也许不在前面', r1b: '不记得　也无妨', r1s: '不说　也好',
     sutra: '雪　下了一夜',
-    tk2: '落花', nFind: '找回落下的花枝', pick_sprig: '拾起花枝', ch1End: '第一章 · 完',
-    g1: '花　要落光了', g2: '奶奶还没回来', g3: '我想留给她看', g4: '帮我把花捡回去　好吗',
-    g5: '开回来了', g6: '奶奶一定会喜欢', g7: '奶奶', g8: '花　都落了',
+    tk2: '落花', keepM: '长按 · 留住花', keepD: '按住 E 或鼠标 · 留住花', nLet: '松开手', h1: '花　停住了', h2: '奶奶　也停住了', ch1End: '第一章 · 完',
+    g1: '奶奶说　今天回来', g2: '花　正好开满了', g3: '可是　起风了', g4: '帮我留住它　好吗',
+    g6: '奶奶一定会喜欢', g7: '奶奶', g8: '花　都落了',
     o1: '阿念', o2: '赶上了', o3: '落花的时候　最好看',
     lang: '语言', musicOn: '关闭声音', musicOff: '打开声音',
   },
@@ -60,9 +60,9 @@ const S = {
     q1: 'You have walked so far. What are you looking for?', a1a: 'Somewhere to go', a1b: 'I don\'t remember', aSil: '…',
     r1a: 'Perhaps it is not ahead of you', r1b: 'That is all right', r1s: 'Saying nothing is fine too',
     sutra: 'The snow fell all night',
-    tk2: 'Fallen blossom', nFind: 'Find the fallen sprigs', pick_sprig: 'Pick up the sprig', ch1End: 'End of Chapter One',
-    g1: 'The blossom is nearly gone', g2: "And Grandma isn't back yet", g3: 'I wanted to keep it for her', g4: 'Will you help me put it back?',
-    g5: "It's blooming again", g6: 'Grandma will love it', g7: 'Grandma!', g8: 'The blossom all fell',
+    tk2: 'Fallen blossom', keepM: 'Hold · keep the blossom', keepD: 'Hold E or mouse · keep the blossom', nLet: 'Let go', h1: 'The petals stopped', h2: 'Grandma stopped too', ch1End: 'End of Chapter One',
+    g1: "Grandma said she'd be back today", g2: 'And the blossom is just full', g3: 'But the wind is rising', g4: 'Will you help me keep it?',
+    g6: 'Grandma will love it', g7: 'Grandma!', g8: 'The blossom all fell',
     o1: 'Anian', o2: 'I made it in time', o3: "It's loveliest when it falls",
     lang: 'Language', musicOn: 'Sound off', musicOff: 'Sound on',
   },
@@ -89,9 +89,9 @@ const S = {
     q1: 'ここまで歩いて　何を探している', a1a: '行き先を', a1b: '覚えていない', aSil: '……',
     r1a: '行き先は　前にあるとは限らない', r1b: '覚えていなくとも　よい', r1s: '言わずとも　よい',
     sutra: '雪は　一晩じゅう降った',
-    tk2: '落花', nFind: '散った花の枝を探す', pick_sprig: '花の枝を拾う', ch1End: '第一章 · 完',
-    g1: '花が　散ってしまう', g2: 'おばあちゃんは　まだ', g3: '見せてあげたかったのに', g4: '花を戻すの　手伝って',
-    g5: 'また咲いた', g6: 'おばあちゃん　きっと喜ぶ', g7: 'おばあちゃん', g8: '花　みんな散っちゃった',
+    tk2: '落花', keepM: '長押し · 花をとめる', keepD: 'E またはマウスを長押し · 花をとめる', nLet: '手を離す', h1: '花が　止まった', h2: 'おばあちゃんも　止まった', ch1End: '第一章 · 完',
+    g1: 'おばあちゃん　今日帰ってくるって', g2: '花も　ちょうど満開', g3: 'でも　風が出てきた', g4: 'お花　とめておいて',
+    g6: 'おばあちゃん　きっと喜ぶ', g7: 'おばあちゃん', g8: '花　みんな散っちゃった',
     o1: '念ちゃん', o2: '間に合った', o3: '散るときが　いちばんきれい',
     lang: '言語', musicOn: '音を消す', musicOff: '音を出す',
   },
@@ -125,6 +125,7 @@ export function t(key, isMobile = false) {
   if (key === 'move') return isMobile ? s.moveM : s.moveD;
   if (key === 'start') return isMobile ? s.startM : s.startD;
   if (key === 'light') return isMobile ? s.lightM : s.lightD;
+  if (key === 'keep') return isMobile ? s.keepM : s.keepD;
   if (key.startsWith('act:')) return (isMobile ? s.tap : s.press).replace('{v}', s[key.slice(4)]);
   return s[key] ?? key;
 }

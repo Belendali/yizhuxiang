@@ -53,10 +53,10 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 const grade = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVig: { value: 0.32 }, uWarm: { value: 0 }, uNight: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVig: { value: 0.32 }, uWarm: { value: 0 }, uNight: { value: 0 }, uStill: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uTime; uniform float uVig; uniform float uWarm; uniform float uNight; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float uTime; uniform float uVig; uniform float uWarm; uniform float uNight; uniform float uStill; varying vec2 vUv;
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
     void main(){
       vec4 c = texture2D(tDiffuse, vUv);
@@ -68,6 +68,9 @@ const grade = new ShaderPass({
       float warmth = max(smoothstep(0.04, 0.22, c.r - c.b), smoothstep(0.06, 0.2, (c.r - c.b) / max(c.r, 0.001)) * smoothstep(0.45, 0.75, nl));
       warmth = max(warmth, smoothstep(0.76, 0.86, max(c.r, max(c.g, c.b))));
       c.rgb = mix(c.rgb, c.rgb * mix(vec3(0.3, 0.37, 0.52), vec3(1.08, 1.0, 0.92), warmth), uNight);
+      // held still: the colour drains toward a pale, faintly cool stillness
+      float sl = dot(c.rgb, vec3(0.299,0.587,0.114));
+      c.rgb = mix(c.rgb, vec3(sl) * vec3(0.97, 1.0, 1.05) * 1.04, uStill * 0.42);
       // gentle split tone: cool shadows, warm highlights
       float l = dot(c.rgb, vec3(0.299,0.587,0.114));
       c.rgb += mix(vec3(-0.012, 0.0, 0.018), vec3(0.025, 0.01, -0.02) * (1.0 + uWarm), smoothstep(0.2, 0.8, l));
@@ -196,7 +199,7 @@ function renderTask() {
   taskSig = '';
 }
 function updateTask() {
-  if (activeScene === 'valley') { updateNianTask(); return; }
+  if (activeScene === 'valley') { if (taskSig) { taskSig = ''; taskEl.classList.remove('show'); } return; }
   const show = activeScene === 'out' && quest.active && !(quest.done && fired.has('taskDone'));
   const sig = show ? quest.items.map((it) => it.state).join() : '';
   if (sig === taskSig) return;
@@ -209,28 +212,6 @@ function updateTask() {
   }
   // all home: the list stays a moment, then goes
   if (quest.done) after(3.5, () => { fired.add('taskDone'); });
-}
-
-// 阿念's errand, top-left: 落花 and one dot for each sprig, filled as each blooms again.
-function updateNianTask() {
-  const show = !!nian && nian.active && !(nian.done && fired.has('nTaskDone'));
-  const sig = show ? `n${nian.bloomed}` : '';
-  if (sig === taskSig) return;
-  taskSig = sig;
-  taskEl.classList.toggle('show', show);
-  if (!show) return;
-  if (!taskEl.querySelector('.dots')) {
-    taskEl.innerHTML = '';
-    const head = document.createElement('div');
-    head.className = 'tk-name';
-    head.textContent = tx('tk2');
-    const row = document.createElement('div');
-    row.className = 'tk-items dots';
-    for (let i = 0; i < nian.total; i++) row.append(document.createElement('span'));
-    taskEl.append(head, row);
-  }
-  [...taskEl.querySelectorAll('.dots span')].forEach((el, i) => { el.className = i < nian.bloomed ? 'home' : ''; });
-  if (nian.done) after(3, () => fired.add('nTaskDone'));
 }
 
 // Answers to the Buddha: two replies and a quiet "……" (saying nothing).
@@ -339,7 +320,7 @@ let pointerDown = false;
 let lastPX = 0, lastPY = 0;
 const canvas = renderer.domElement;
 const locked = () => document.pointerLockElement === canvas;
-const FREE_STATES = new Set(['walk', 'inWalk', 'valley', 'nQuest']);
+const FREE_STATES = new Set(['walk', 'inWalk', 'valley']);
 // Directed shots: the mouse/touch neither turns the camera nor skips them.
 const AUTO_SHOTS = new Set(['intro', 'inLook', 'opening', 'leaving', 'rest', 'sleep', 'wake', 'vLook', 'nTalk', 'nEnd']);
 
@@ -1167,7 +1148,6 @@ function goValley() {
   if (!valley) {
     valley = buildValley();
     nian = new Nian(valley, sound);
-    nian.onBloom = onNianBloom;
     renderer.compile(valley.scene, camera);
   }
   valley.scene.add(walker.group);
@@ -1196,7 +1176,7 @@ function goValley() {
 function updateValley(dt) {
   const vh = renderer.domElement.height;
   const portrait = camera.aspect < 0.8;
-  valley.update(dt, camera.position, vh);
+  valley.update(dt * flow, camera.position, vh);
   tmp.set(P.x, camY + 1.9, P.z);
 
   if (state === 'wake') {
@@ -1241,7 +1221,7 @@ function updateValley(dt) {
     }
   }
 
-  if (state === 'valley' || state === 'nQuest') {
+  if (state === 'valley') {
     const sp = stepBody(P, dt, { canStand: canStandValley, speed: 1.4, runMul: 1.7 });
     placeWalkerOut(dt);
     if (walker.consumeStep() && sp > 0.2) sound.step(true);
@@ -1249,24 +1229,38 @@ function updateValley(dt) {
     orbit(tmp, portrait ? 6.4 : 5.6, null);
     wantPos.y = Math.max(wantPos.y, valleyHeight(wantPos.x, wantPos.z) + 0.5);
     camLag = lerp(0.6, 0.18, ss(stateTime, 0, 2));
-    if (state === 'valley') {
-      takeTap();
-      // down the path, someone sitting under a tree: 那里好像有个人, 去看看好了
-      const g = nian.girl.position;
-      const gd = Math.hypot(P.x - g.x, P.z - g.z);
-      if (gd < 21 && stateTime > 1.5 && !voicing()) once('v-see', () => { thought('s1', 3.0); after(3.4, () => thought('s2', 3.0)); });
-      if (gd < 3.0) startNianTalk();
-    } else {
-      // a fallen sprig within reach: tap, and it flies home to the tree
-      const sp2 = nian.nearest(P.x, P.z);
-      if (sp2) {
-        hint('act:pick_sprig');
-        if (takeTap()) { hint(''); holding = false; nian.pick(sp2); }
-      } else {
-        if (hintKey === 'act:pick_sprig') hint('');
-        takeTap();
-      }
+    takeTap();
+    // down the path, someone sitting under a tree: 那里好像有个人, 去看看好了
+    const g = nian.girl.position;
+    const gd = Math.hypot(P.x - g.x, P.z - g.z);
+    if (gd < 21 && stateTime > 1.5 && !voicing()) once('v-see', () => { thought('s1', 3.0); after(3.4, () => thought('s2', 3.0)); });
+    if (gd < 3.0) startNianTalk();
+  }
+
+  // Keeping the blossom: holding stops the world (the petals hang in the air), but 阿念 and
+  // her grandmother on the path stop with it. Only letting go brings the grandmother.
+  if (state === 'nHold') {
+    takeTap();
+    P.vx = P.vz = 0;
+    placeWalkerOut(dt);
+    const still = holding && stateTime > 0.6;
+    flow = damp(flow, still ? 0 : 1, still ? 7 : 3.2, dt);
+    grade.uniforms.uStill.value = 1 - flow;
+    if (still !== wasStill) {
+      wasStill = still;
+      sound.ambience({ wind: still ? 0.04 : 0.34, drone: 0, muffle: still });
+      if (still && !fired.has('h-first')) { fired.add('h-first'); sound.bowl(784, 0.06); }
     }
+    if (still) holdTotal += dt;
+    // held, the view drifts slowly in among the hanging petals; let go, it eases back
+    pushK = damp(pushK, still ? 1 : 0, still ? 0.32 : 1.4, dt);
+    if (still && holdTotal > 1.2 && hintKey === 'keep') hint('');
+    if (still && holdTotal > 1.8) once('h1', () => thought('h1', 2.8));
+    if (still && holdTotal > 6.0) once('h2', () => { thought('h2', 3.4); after(3.8, () => { if (holding) hint('nLet'); }); });
+    if (!still && hintKey === 'nLet') hint('');
+    holdCamera(stateTime, portrait, pushK);
+    // she has come far enough: the last gust, and she walks in under it
+    if (nian.progress > 0.8 && !still) { hint(''); flow = 1; grade.uniforms.uStill.value = 0; setState('nEnd'); }
   }
 
   // the meeting: the traveler stops and turns to her; a quiet two-shot from the side
@@ -1293,7 +1287,7 @@ function updateValley(dt) {
   }
 
   if (state === 'nEnd') updateNianEnd(dt, portrait);
-  nian.update(dt, P);
+  nian.update(dt * flow, P);
 }
 
 const GIRL = { cls: 'voice girl', gap: 1.7, hold: 3.2 };
@@ -1311,55 +1305,68 @@ function startNianTalk() {
     const a = voice(['g1', 'g2'], GIRL);
     after(a + 0.3, () => {
       const b = voice(['g3', 'g4'], GIRL);
-      after(b + 0.2, () => {
-        nian.activate();
-        nian.lookAt = null;
-        setState('nQuest');
-        hint('nFind');
-        after(5, () => { if (hintKey === 'nFind') hint(''); });
-      });
+      after(b + 0.2, startHold);
     });
   });
 }
-function onNianBloom(n, total) {
-  if (n === 4) after(0.6, () => voice(['g5'], GIRL));
-  if (n === total) after(2.2, () => { hint(''); setState('nEnd'); });
+// The wind rises. A cut to the wide shot: the traveler beside 阿念 under her tree, the path
+// beyond it where her grandmother has just come into sight, far off.
+let flow = 1, wasStill = false, holdTotal = 0, pushK = 0;
+function startHold() {
+  const tp = nian.treePos, g = nian.girl.position;
+  // a step behind her and to the side, so the view down the path stays open
+  P.x = g.x - 0.75; P.z = g.z - 0.7; P.vx = P.vz = 0;
+  P.yaw = Math.atan2(-(tp.x - P.x), -(tp.z - P.z));
+  bodyY = null; placeWalkerOut();
+  nian.lookAt = tp;
+  nian.startWind();
+  nian.elderComes();
+  sound.ambience({ wind: 0.34, drone: 0, muffle: false });
+  valley.petals.uniforms.uWind.value.set(1.1, 0, 0.55);
+  flow = 1; wasStill = false; holdTotal = 0; pushK = 0;
+  setState('nHold');
+  holdCamera(0, camera.aspect < 0.8);
+  camPos.copy(wantPos); camLook.copy(wantLook);
+  after(1.6, () => { if (state === 'nHold') hint('keep'); });
+}
+function holdCamera(t, portrait, push = 0) {
+  const tp = nian.treePos;
+  const cz = tp.z + (portrait ? 9 : 7.5);
+  wantPos.set(valleyPathX(cz) + 0.8, tp.y + 2.1, cz);
+  // the tree, and the path beyond it where she is coming
+  wantLook.set(tp.x - 1.4, tp.y + 1.9, tp.z - 3.5);
+  if (push > 0.001) {
+    // in under the edge of the crown, among the petals in the air
+    const k = push * push * (3 - 2 * push);
+    // (from the tree's far side, so 阿念 and the traveler sit at the edge of the frame and the
+    // path where the grandmother stands is clear in the middle)
+    wantPos.lerp(v3.set(tp.x + 0.3, tp.y + 1.65, tp.z + 3.2), k);
+    wantLook.lerp(v3.set(tp.x - 2.4, tp.y + 1.8, tp.z - 6), k);
+  }
+  camLag = 1.2;
 }
 // The end: the full tree; a gust takes it all; the grandmother comes up the path.
 // A wide shot from beside the tree, looking down the path she comes along.
 function updateNianEnd(dt, portrait) {
   const t = stateTime, tp = nian.treePos;
-  // standing on the path a little way back (the path is clear of trees), the tree and the
-  // path beyond it in view
-  const cz = tp.z + (portrait ? 9 : 7.5);
-  wantPos.set(valleyPathX(cz) + 0.8, tp.y + 2.4, cz);
-  wantLook.lerpVectors(v3.set(tp.x, tp.y + 2.4, tp.z), tmp.set(tp.x - 2.8, tp.y + 1.3, tp.z - 9), ss(t, 9, 14));
-  camLag = 1.2;
-  // a cut: the traveler stands beside her, both looking at the full tree
-  once('ne0', () => {
-    const g = nian.girl.position;
-    P.x = g.x + 0.9; P.z = g.z + 1.1; P.vx = P.vz = 0;
-    P.yaw = Math.atan2(-(tp.x - P.x), -(tp.z - P.z));
-    bodyY = null; placeWalkerOut();
-    camPos.copy(wantPos); camLook.copy(wantLook);
-    nian.lookAt = tp;
-  });
-  if (t > 0.6) once('ne1', () => voice(['g6'], GIRL));
-  if (t > 5.0) once('ne2', () => {
+  // from the wide shot, the view drifts down the path to where they meet
+  holdCamera(t, portrait);
+  wantLook.lerp(tmp.set(tp.x - 2.8, tp.y + 1.3, tp.z - 7), ss(t, 3, 9));
+  if (t > 0.2) once('ne2', () => {
     nian.gust();
     sound.ambience({ wind: 0.7, drone: 0, muffle: false });
     valley.petals.uniforms.uWind.value.set(3.2, 0, 1.6);
+    nian.rainWind.set(2.2, 0, 1.1);
     nian.hop = 0;
   });
-  if (t > 9.0) once('ne3', () => { sound.ambience({ wind: 0.22, drone: 0, muffle: false }); valley.petals.uniforms.uWind.value.set(0.55, 0, 0.3); });
-  if (t > 6.5) once('ne4', () => nian.elderComes());
-  if (t > 11.0) once('ne5', () => voice(['o1'], ELDER));
-  if (t > 13.5) once('ne6', () => { nian.lookAt = null; nian.runTo = nian.elderPos; nian.girlMode = 'run'; voice(['g7'], GIRL); });
-  if (t > 18.0) once('ne7', () => voice(['g8'], GIRL));
-  if (t > 21.5) once('ne8', () => voice(['o2', 'o3'], ELDER));
-  if (t > 29.5) once('ne9', () => { nian.lookAt = P; nian.girlMode = 'wave'; });
-  if (t > 33.0) once('ne10', () => { fadeEl.classList.add('pale'); fade(1, false, 4200); sound.musicLevel(0.4, 6); });
-  if (t > 38.0) once('ne11', () => {
+  if (t > 4.5) once('ne3', () => { sound.ambience({ wind: 0.22, drone: 0, muffle: false }); valley.petals.uniforms.uWind.value.set(0.55, 0, 0.3); nian.rainWind.set(0.45, 0, 0.42); });
+  if (t > 2.4) once('ne5', () => voice(['o1'], ELDER));
+  if (t > 4.8) once('ne6', () => { nian.lookAt = null; nian.runTo = nian.elderPos; nian.girlMode = 'run'; voice(['g7'], GIRL); });
+  if (t > 9.4) once('ne7', () => voice(['g8'], GIRL));
+  if (t > 12.8) once('ne8', () => voice(['o2', 'o3'], ELDER));
+  if (t > 20.8) once('ne9', () => { nian.lookAt = P; nian.girlMode = 'wave'; });
+  if (t > 24.3) once('ne10', () => { fadeEl.classList.add('pale'); fade(1, false, 4200); sound.musicLevel(0.4, 6); });
+  if (t > 29.3) once('ne11', () => {
     titleMain = 'ch1Title'; titleSub = 'ch1End'; renderTitle();
     document.body.classList.add('ended');
     titleEl.classList.add('show');
@@ -1521,12 +1528,12 @@ window.__game = {
     if (target === 'nianQuest') {
       fade(1, false, 10); goValley(); fade(0, false, 600);
       const g = nian.girl.position; P.x = g.x - 1.2; P.z = g.z + 2.5; P.yaw = 0; placeWalkerOut();
-      fired.add('nTalk'); nian.standNow(); nian.ready.then(() => nian.activate()); setState('nQuest');
+      fired.add('nTalk'); nian.standNow(); nian.ready.then(() => { startHold(); nian.windNow(); });
     }
     if (target === 'nianEnd') {
       fade(1, false, 10); goValley(); fade(0, false, 600);
       const g = nian.girl.position; P.x = g.x - 1.2; P.z = g.z + 2.2; P.yaw = 0; placeWalkerOut();
-      fired.add('nTalk'); nian.standNow(); nian.ready.then(() => { nian.completeAll(); setState('nEnd'); });
+      fired.add('nTalk'); nian.standNow(); nian.ready.then(() => { startHold(); nian.windNow(); nian.elderK = 0.8 * (nian.elderPath.length - 1); hint(''); setState('nEnd'); });
     }
     if (target === 'talk1') {
       // the incense already offered, the first talk begins
@@ -1564,7 +1571,7 @@ const TEST_WORLDS = [
     ['inside', '进殿'], ['walkin', '殿内'], ['altar', '上香'], ['talk1', '对话一'],
     ['errand', '修庙'], ['repaired', '归位'], ['talk2', '对话二'], ['night', '入夜'],
   ]],
-  ['第一章 · 落花谷', [['valley', '醒来'], ['valleyWalk', '漫步'], ['nian', '阿念'], ['nianQuest', '找花'], ['nianEnd', '落花祭']]],
+  ['第一章 · 落花谷', [['valley', '醒来'], ['valleyWalk', '漫步'], ['nian', '阿念'], ['nianQuest', '留花'], ['nianEnd', '落花祭']]],
   ['第二章 · 渡口', []], ['第三章 · 镜城', []], ['第四章 · 雾山', []], ['第五章 · 人间', []], ['终章', []],
 ];
 const testAt = new URLSearchParams(location.search).get('at') || '';
