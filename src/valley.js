@@ -13,7 +13,7 @@ const ss = THREE.MathUtils.smoothstep;
 export const VALLEY_START = { x: 2.3, z: 6.2 };
 const HERO = { x: 4.4, z: 4.6, s: 1.75 }; // the old tree the traveler wakes under
 // 阿念's tree, a little way down the path (her story lives in anian.js); kept clear of other trees
-export const NIAN = { x: 1.2, z: -12 };
+export const NIAN = { x: 0.6, z: -24 };
 // where 阿念's fallen sprigs lie, relative to her tree
 export const SPRIGS = [[-6.5, 3.5], [5.5, -6], [9.5, 2.5], [-2.5, -12.5], [12, -11], [-9.5, -4.5], [3, 9.5]];
 
@@ -25,8 +25,10 @@ export function valleyHeight(x, z) {
   let h = (noise.fbm(x * 0.035 + 3, z * 0.035) - 0.5) * 3.2 + (noise.fbm(x * 0.2, z * 0.2 + 5) - 0.5) * 0.3;
   const dp = Math.abs(x - valleyPathX(z));
   h *= 1 - (1 - ss(dp, 1.5, 9)) * 0.85;               // the valley floor is gentle near the path
-  h += Math.pow(Math.max(0, dp - 20), 1.4) * 0.38;     // slopes rising either side
-  h += Math.pow(Math.max(0, z - 16), 1.3) * 0.4;       // and behind where the traveler wakes
+  // soft slopes rising either side and behind where the traveler wakes; they level off
+  // low, so the far mountains and the sky stay open above them
+  h += ss(dp, 20, 75) * 13 + ss(dp, 60, 140) * 6;
+  h += ss(z, 16, 60) * 12;
   return h;
 }
 
@@ -79,19 +81,88 @@ export function buildValley() {
   scene.fog = new THREE.FogExp2(fogColor, 0.0105);
   scene.background = fogColor;
 
-  // ---------- Sky ----------
+  // ---------- Sky: soft spring blue overhead, thin drifting cloud, warm glow toward the sun,
+  // melting into the haze at the horizon (the horizon colour is the fog colour) ----------
+  const sunDir = new THREE.Vector3(-30, 36, 24).normalize();
   const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(400, 32, 16),
+    new THREE.SphereGeometry(400, 48, 24),
     new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
-      uniforms: { uTop: { value: new THREE.Color(0x93b2c6) }, uHor: { value: new THREE.Color(0xf6e6dd) } },
+      uniforms: {
+        uTop: { value: new THREE.Color(0x7fa6c4) }, uMid: { value: new THREE.Color(0xc9d8e0) },
+        uHor: { value: fogColor.clone() }, uSun: { value: sunDir }, uTime: { value: 0 },
+      },
       vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: `uniform vec3 uTop; uniform vec3 uHor; varying vec3 vP;
-        void main(){ float h = clamp(vP.y * 1.5, 0.0, 1.0); gl_FragColor = vec4(mix(uHor, uTop, pow(h, 0.8)), 1.0); }`,
+      fragmentShader: `uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uHor; uniform vec3 uSun; uniform float uTime; varying vec3 vP;
+        float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
+        float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + 7.1; a *= 0.5; } return v; }
+        void main(){
+          float y = max(vP.y, 0.0);
+          vec3 c = mix(uHor, uMid, smoothstep(0.0, 0.22, y));
+          c = mix(c, uTop, smoothstep(0.18, 0.85, y));
+          // thin, wind-drawn cloud: stretched noise on a plane above
+          vec2 uv = vP.xz / (vP.y + 0.18) * 0.9;
+          uv.x *= 0.45;
+          float cl = fbm(uv * 1.2 + vec2(uTime * 0.004, 0.0));
+          cl = smoothstep(0.5, 0.82, cl) * smoothstep(0.03, 0.25, y);
+          c = mix(c, vec3(1.0, 0.975, 0.97), cl * 0.65);
+          // warm light around the sun, and a faint rose band low in the sky
+          float sd = max(dot(normalize(vP), uSun), 0.0);
+          c += vec3(1.0, 0.86, 0.72) * (pow(sd, 40.0) * 0.35 + pow(sd, 6.0) * 0.12);
+          c = mix(c, vec3(0.97, 0.86, 0.86), (1.0 - smoothstep(0.02, 0.3, y)) * 0.18);
+          c = mix(uHor, c, smoothstep(-0.02, 0.06, vP.y));
+          gl_FragColor = vec4(c, 1.0);
+        }`,
     })
   );
-  sky.renderOrder = -1;
+  sky.renderOrder = -2;
   scene.add(sky);
+
+  // ---------- Far mountains: three soft layers of ridge, nearer ones a little deeper in
+  // colour, each fading into the haze at its foot (no fog: their colour is painted) ----------
+  {
+    const mr = rand(5);
+    const layers = [
+      { R: 300, top: 0x9db2c2, amp: 70, base: 18, seed: 1.3 },
+      { R: 240, top: 0x8ea4b3, amp: 52, base: 10, seed: 4.1 },
+      { R: 190, top: 0x86998f, amp: 34, base: 4, seed: 8.7 },
+    ];
+    const ph = Array.from({ length: 12 }, () => mr() * 6.28);
+    for (const L of layers) {
+      const N = 360, pos = [], col = [], idx = [];
+      const top = new THREE.Color(L.top);
+      for (let i = 0; i <= N; i++) {
+        const a = (i / N) * Math.PI * 2;
+        // ridge line: a few broad swells and sharper peaks
+        let h = 0.55 + 0.25 * Math.sin(a * 2 + ph[0] + L.seed) + 0.18 * Math.sin(a * 5 + ph[1] * L.seed)
+          + 0.12 * Math.abs(Math.sin(a * 11 + ph[2] + L.seed * 2)) + 0.06 * Math.sin(a * 23 + ph[3]);
+        // lower where the valley opens ahead (down the path, -Z) so the eye travels far
+        h *= 0.55 + 0.45 * (1 - Math.max(0, -Math.cos(a - Math.PI / 2)) * 0.6);
+        const x = Math.cos(a) * L.R, z = Math.sin(a) * L.R - 40;
+        pos.push(x, -12, z, x, L.base + h * L.amp, z);
+        col.push(fogColor.r, fogColor.g, fogColor.b, top.r, top.g, top.b);
+        if (i < N) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      g.setIndex(idx);
+      // mist at the foot: the bottom colour is the haze, the top the mountain
+      const mat = new THREE.ShaderMaterial({
+        side: THREE.DoubleSide, fog: false, depthWrite: true,
+        uniforms: { uHaze: { value: fogColor.clone() } },
+        vertexShader: 'attribute vec3 color; varying vec3 vC; varying float vY; void main(){ vC = color; vY = position.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+        fragmentShader: `uniform vec3 uHaze; varying vec3 vC; varying float vY;
+          void main(){ float m = smoothstep(${(L.base - 6).toFixed(1)}, ${(L.base + L.amp * 0.6).toFixed(1)}, vY); gl_FragColor = vec4(mix(uHaze, vC, m * 0.85), 1.0); }`,
+      });
+      const mesh = new THREE.Mesh(g, mat);
+      mesh.renderOrder = -1;
+      mesh.frustumCulled = false;
+      scene.add(mesh);
+    }
+  }
 
   // ---------- Light: low morning sun from behind-left, so the blossom is lit ----------
   scene.add(new THREE.HemisphereLight(0xfff3ee, 0x8d9a74, 1.25));
@@ -284,18 +355,6 @@ export function buildValley() {
     }
   }
 
-  // ---------- Far hills, pale in the haze ----------
-  const hillMat = new THREE.MeshStandardMaterial({ color: 0x9da7a6, roughness: 1, flatShading: true });
-  for (let i = 0; i < 16; i++) {
-    const a = -Math.PI * 0.95 + (i / 15) * Math.PI * 0.9 + (r() - 0.5) * 0.1;
-    const d = 95 + r() * 60;
-    const hill = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), hillMat);
-    const w = 30 + r() * 30;
-    hill.scale.set(w, 18 + r() * 26, w * 0.7);
-    hill.position.set(Math.cos(a) * d, -6, Math.sin(a) * d - 40);
-    scene.add(hill);
-  }
-
   // ---------- Falling petals ----------
   const petals = new ParticleField({
     count: 2600, box: new THREE.Vector3(44, 20, 44), color: 0xf3bccb, color2: 0xfff0f3,
@@ -307,6 +366,6 @@ export function buildValley() {
   return {
     scene, colliders, petals,
     hero: new THREE.Vector3(HERO.x, valleyHeight(HERO.x, HERO.z), HERO.z),
-    update(dt, center, vh) { petals.update(dt, center, vh); },
+    update(dt, center, vh) { petals.update(dt, center, vh); sky.material.uniforms.uTime.value += dt; },
   };
 }

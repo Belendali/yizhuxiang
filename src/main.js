@@ -333,7 +333,7 @@ const canvas = renderer.domElement;
 const locked = () => document.pointerLockElement === canvas;
 const FREE_STATES = new Set(['walk', 'inWalk', 'valley', 'nQuest']);
 // Directed shots: the mouse/touch neither turns the camera nor skips them.
-const AUTO_SHOTS = new Set(['intro', 'inLook', 'opening', 'leaving', 'ending', 'wake', 'nTalk', 'nEnd']);
+const AUTO_SHOTS = new Set(['intro', 'inLook', 'opening', 'leaving', 'ending', 'wake', 'vLook', 'nTalk', 'nEnd']);
 
 function lookBy(dx, dy) {
   if (!FREE_STATES.has(state)) return;
@@ -1151,11 +1151,24 @@ function updateValley(dt) {
     if (t > 8.0) once('w-title', () => titleEl.classList.add('show'));
     if (t > 14.5) once('w-title-x', () => titleEl.classList.remove('show'));
     const { f, s } = moveInput();
-    if (t > 12.5 || (t > 4 && (f !== 0 || s !== 0))) {
+    if (t > 12.5 || (t > 4 && (f !== 0 || s !== 0))) setState('vLook');
+  }
+
+  // just awake: 诶 我怎么会在这里, a look to the left and the right, 这是哪
+  if (state === 'vLook') {
+    const t = stateTime;
+    takeTap();
+    P.vx = P.vz = 0;
+    if (t > 1.6) once('vl-title', () => titleEl.classList.remove('show'));
+    if (t > 2.0) once('vl-w1', () => thought('w1', 3.0));
+    P.yaw = 0.85 * (ss(t, 4.4, 5.6) - 2 * ss(t, 6.4, 8.0) + ss(t, 8.8, 9.8));
+    placeWalkerOut(dt);
+    if (t > 7.2) once('vl-w2', () => thought('w2', 3.0));
+    const { f, s } = moveInput();
+    if (t > 10.6 || (t > 2.5 && (f !== 0 || s !== 0))) {
+      once('vl-w1', () => thought('w1', 3.0));
       setState('valley');
-      after(t > 12.4 ? 3.0 : 0.5, () => { titleEl.classList.remove('show'); thought('w1', 3.6); });
-      after(t > 12.4 ? 7.5 : 5, () => thought('w2', 3.6));
-      setTimeout(() => { if (state === 'valley' && !fired.has('v-moved')) hint('move'); }, 4000);
+      setTimeout(() => { if (state === 'valley' && !fired.has('v-moved')) hint('move'); }, 3500);
     }
   }
 
@@ -1169,9 +1182,11 @@ function updateValley(dt) {
     camLag = lerp(0.6, 0.18, ss(stateTime, 0, 2));
     if (state === 'valley') {
       takeTap();
-      // down the path, 阿念 under her tree
+      // down the path, someone sitting under a tree: 那里好像有个人, 去看看好了
       const g = nian.girl.position;
-      if (Math.hypot(P.x - g.x, P.z - g.z) < 4.6) startNianTalk();
+      const gd = Math.hypot(P.x - g.x, P.z - g.z);
+      if (gd < 21 && stateTime > 1.5 && !voicing()) once('v-see', () => { thought('s1', 3.0); after(3.4, () => thought('s2', 3.0)); });
+      if (gd < 3.0) startNianTalk();
     } else {
       // a fallen sprig within reach: tap, and it flies home to the tree
       const sp2 = nian.nearest(P.x, P.z);
@@ -1196,7 +1211,7 @@ function updateValley(dt) {
     P.yaw = angleLerp(P.yaw, Math.atan2(-(g.x - P.x), -(g.z - P.z)), Math.min(1, dt * 3));
     // a few more steps, to stand near her
     const gd = Math.hypot(g.x - P.x, g.z - P.z);
-    if (gd > 1.9) { const st = Math.min(gd - 1.9, 1.1 * dt); P.x += (g.x - P.x) / gd * st; P.z += (g.z - P.z) / gd * st; placeWalkerOut(dt); }
+    if (gd > 2.1) { const st = Math.min(gd - 2.1, 1.1 * dt); P.x += (g.x - P.x) / gd * st; P.z += (g.z - P.z) / gd * st; placeWalkerOut(dt); }
     const mx = (P.x + g.x) / 2, mz = (P.z + g.z) / 2;
     const dx = g.x - P.x, dz = g.z - P.z, d = Math.hypot(dx, dz) || 1;
     // beside the pair, on the side away from her tree, a little above
@@ -1219,8 +1234,11 @@ function startNianTalk() {
   fired.add('nTalk');
   hint('');
   setState('nTalk');
+  // the traveler says hello; she gets up from her stone and turns round
+  thought('hi', 2.6);
   nian.lookAt = P;
-  after(2.4, () => {
+  after(1.0, () => nian.standUp());
+  after(5.0, () => {
     const a = voice(['g1', 'g2'], GIRL);
     after(a + 0.3, () => {
       const b = voice(['g3', 'g4'], GIRL);
@@ -1434,12 +1452,12 @@ window.__game = {
     if (target === 'nianQuest') {
       fade(1, false, 10); goValley(); fade(0, false, 600);
       const g = nian.girl.position; P.x = g.x - 1.2; P.z = g.z + 2.5; P.yaw = 0; placeWalkerOut();
-      fired.add('nTalk'); nian.ready.then(() => nian.activate()); setState('nQuest');
+      fired.add('nTalk'); nian.standNow(); nian.ready.then(() => nian.activate()); setState('nQuest');
     }
     if (target === 'nianEnd') {
       fade(1, false, 10); goValley(); fade(0, false, 600);
       const g = nian.girl.position; P.x = g.x - 1.2; P.z = g.z + 2.2; P.yaw = 0; placeWalkerOut();
-      fired.add('nTalk'); nian.ready.then(() => { nian.completeAll(); setState('nEnd'); });
+      fired.add('nTalk'); nian.standNow(); nian.ready.then(() => { nian.completeAll(); setState('nEnd'); });
     }
     if (target === 'talk1') {
       // the incense already offered, the first talk begins

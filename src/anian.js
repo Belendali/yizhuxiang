@@ -117,17 +117,33 @@ export class Nian {
     this.treePos = new THREE.Vector3(tx, ty, tz);
     valley.colliders.push({ x: tx, z: tz, r: 0.45 });
 
-    // ---------- 阿念: on the path side of her tree, looking up at it ----------
+    // ---------- 阿念: sitting on a stone in front of her tree, her back to the path ----------
     this.girl = figure({ height: 1.12, robe: 0xd98a95, sash: 0xb2413a, hair: 0x2a1d18, buns: true });
     const px = valleyPathX(tz);
-    this.girlHome = new THREE.Vector3(tx + (px - tx) * 0.55, 0, tz + 0.6);
+    this.girlHome = new THREE.Vector3(tx + (px - tx) * 0.35, 0, tz + 2.0);
     this.girlHome.y = valleyHeight(this.girlHome.x, this.girlHome.z);
     this.girl.position.copy(this.girlHome);
     this.girlYaw = yawTo(this.girlHome.x, this.girlHome.z, tx, tz);
     this.girl.rotation.y = this.girlYaw;
     this.scene.add(this.girl);
+    // the stone she sits on, just behind her feet
+    const bx = Math.sin(this.girlYaw), bz = Math.cos(this.girlYaw);
+    this.seatPos = new THREE.Vector3(this.girlHome.x + bx * 0.3, 0, this.girlHome.z + bz * 0.3);
+    this.seatPos.y = valleyHeight(this.seatPos.x, this.seatPos.z);
+    // a knee-high mound of the valley's stones (the pile model, 0.95 m across, about 0.42 m high)
+    this.seat = new THREE.Group();
+    this.seat.position.copy(this.seatPos);
+    this.seat.rotation.y = this.girlYaw + 1.2;
+    this.scene.add(this.seat);
+    propModel('rocks', { width: 0.95, anchor: 'bottom' }).then((m) => this.seat.add(m))
+      .catch((e) => console.warn('seat stones not loaded', e));
+    this.seatCollider = { x: this.seatPos.x, z: this.seatPos.z, r: 0.4 };
+    valley.colliders.push(this.seatCollider);
     this.girlCollider = { x: this.girlHome.x, z: this.girlHome.z, r: 0.3 };
     valley.colliders.push(this.girlCollider);
+    this.seated = true;   // until the traveler says hello
+    this.stepTo = null;   // where she steps to once she is up
+    this.riseT = -1;      // time since she began to stand
     this.girlMode = 'idle'; // idle | run | wave
     this.hop = 0;
     this.lookAt = null;      // Vector3 she turns toward, or null for the tree
@@ -142,6 +158,8 @@ export class Nian {
       const bow = this.acts.Formal_Bow;
       if (bow) { bow.setLoop(THREE.LoopOnce); bow.clampWhenFinished = true; }
       this.mixer.addEventListener('finished', (e) => { if (e.action === bow && this.girlMode === 'wave') this.girlMode = 'idle'; });
+      const rise = this.acts.Sit_to_Stand_Transition_M;
+      if (rise) { rise.setLoop(THREE.LoopOnce); rise.clampWhenFinished = true; }
       this._play('Idle_9', 0);
       this.mixer.update(0);
       // measure her standing in the idle pose (a skinned box needs the bones posed first)
@@ -151,10 +169,28 @@ export class Nian {
       m.scale.setScalar(s);
       m.position.y = this._foot = -box.min.y * s;
       m.rotation.y = Math.PI; // the model faces +Z; the figure convention is -Z
+      // sitting (and getting up) the clips carry her back onto the seat; this shift lines the
+      // end of getting up with the standing pose
+      this._sitShift = 0.27 * s;
+      if (this.seated) this._play('Chair_Sit_Idle_F', 0);
       m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
       this.model = m;
       this.girl.userData.body.visible = false;
       this.girl.add(m);
+      if (this.seated) {
+        // slide the stone right under her hips in the sitting pose
+        m.position.z = -this._sitShift;
+        this.mixer.update(0);
+        this.girl.updateMatrixWorld(true);
+        const hips = m.getObjectByName('mixamorigHips');
+        if (hips) {
+          const h = hips.getWorldPosition(new THREE.Vector3());
+          h.x += Math.sin(this.girlYaw) * 0.12; h.z += Math.cos(this.girlYaw) * 0.12; // a little behind, clear of her feet
+          this.seat.position.set(h.x, valleyHeight(h.x, h.z) - 0.03, h.z);
+          this.seatCollider.x = h.x; this.seatCollider.z = h.z;
+          this.seat.scale.y = Math.max(0.6, (h.y - this.seat.position.y - 0.07) / 0.42);
+        }
+      }
     });
 
     // ---------- the grandmother, far down the path, hidden until the end ----------
@@ -202,7 +238,7 @@ export class Nian {
       for (let i = 0, tries = 0; mats.length < N && tries < 80; tries++) {
         const a = rnd() * Math.PI * 2, r = 0.8 + rnd() * 2.6;
         const x = tx + Math.cos(a) * r, z = tz + Math.sin(a) * r;
-        if (Math.hypot(x - this.girlHome.x, z - this.girlHome.z) < 0.6) continue;
+        if (Math.hypot(x - this.girlHome.x, z - this.girlHome.z) < 1.0) continue;
         e.set((rnd() - 0.5) * 0.5, rnd() * 6.28, (rnd() - 0.5) * 0.5);
         m4.compose(v.set(x, valleyHeight(x, z) - 0.01, z), q.setFromEuler(e), sc.setScalar(0.7 + rnd() * 0.6));
         mats.push(m4.clone());
@@ -310,6 +346,11 @@ export class Nian {
     });
     if (this.active) this.activate();
   }
+
+  /** The traveler said hello: she gets up from her stone (then turns, via lookAt). */
+  standUp() { if (this.seated && this.riseT < 0) this.riseT = 0; }
+  /** Already standing (debug jumps past the meeting). */
+  standNow() { this.seated = false; this.riseT = -1; this.stepTo = null; }
 
   /** Cross-fade 阿念 to another clip. */
   _play(name, fade = 0.35) {
@@ -479,6 +520,30 @@ export class Nian {
       }
       g.position.y = valleyHeight(g.position.x, g.position.z);
       this.girlCollider.x = g.position.x; this.girlCollider.z = g.position.z;
+    } else if (this.stepTo) {
+      // up from the stone: a few quick steps round it, so nothing stands between her and the traveler
+      const dx = this.stepTo.x - g.position.x, dz = this.stepTo.z - g.position.z, d = Math.hypot(dx, dz);
+      if (d > 0.04) {
+        const sp = Math.min(d, 1.5 * dt);
+        g.position.x += dx / d * sp; g.position.z += dz / d * sp;
+        this.girlYaw = angleDamp(this.girlYaw, yawTo(0, 0, dx, dz), 10, dt);
+        moving = true;
+      } else this.stepTo = null;
+      g.position.y = valleyHeight(g.position.x, g.position.z);
+      this.girlCollider.x = g.position.x; this.girlCollider.z = g.position.z;
+    } else if (this.seated) {
+      // on her stone, looking at her tree, not turning round
+      if (this.riseT >= 0) {
+        this.riseT += dt;
+        if (this.riseT > 3.1) {
+          this.seated = false; this.riseT = -1;
+          // step out to the side of the stone nearer the traveler, a little toward them
+          const bx = Math.sin(this.girlYaw), bz = Math.cos(this.girlYaw); // her back
+          const sx = bz, sz = -bx;
+          const side = ((traveler.x - g.position.x) * sx + (traveler.z - g.position.z) * sz) >= 0 ? 1 : -1;
+          this.stepTo = new THREE.Vector3(g.position.x + sx * side * 0.75 + bx * 0.3, 0, g.position.z + sz * side * 0.75 + bz * 0.3);
+        }
+      }
     } else {
       const look = this.lookAt || ((Math.hypot(traveler.x - g.position.x, traveler.z - g.position.z) < 6) ? traveler : this.treePos);
       this.girlYaw = angleDamp(this.girlYaw, yawTo(g.position.x, g.position.z, look.x, look.z), 3, dt);
@@ -495,7 +560,10 @@ export class Nian {
     if (this.model) {
       // the model: a little hop when a part blooms, then the right clip for what she is doing
       this.model.position.y = g.userData.body.position.y - (moving ? Math.abs(Math.sin(t * 11)) * 0.05 : 0) + this._foot;
-      this._play(moving ? 'Run_02' : this.girlMode === 'wave' ? 'Formal_Bow' : 'Idle_9', this.girlMode === 'wave' ? 0.5 : 0.3);
+      this.model.position.z = this.seated ? -this._sitShift : damp(this.model.position.z, 0, 5, dt);
+      const clip = this.seated ? (this.riseT >= 0 ? 'Sit_to_Stand_Transition_M' : 'Chair_Sit_Idle_F')
+        : moving ? 'Run_02' : this.girlMode === 'wave' ? 'Formal_Bow' : 'Idle_9';
+      this._play(clip, this.girlMode === 'wave' ? 0.5 : clip === 'Sit_to_Stand_Transition_M' ? 0.25 : 0.4);
       this.mixer.update(dt);
     }
 
