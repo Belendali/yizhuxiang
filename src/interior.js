@@ -512,6 +512,25 @@ export function buildInterior(renderer) {
     buddha.add(model);
     figure.visible = false;
     api.statue = model;
+    // set the halo and the mandorla just behind the statue's back at their height, so the rings
+    // never cut through the head or shoulders
+    model.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(buddha.matrixWorld).invert();
+    const backAt = (yMin) => {
+      let z = Infinity;
+      const v = new THREE.Vector3();
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        const pos = o.geometry.attributes.position;
+        for (let i = 0; i < pos.count; i += 3) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).applyMatrix4(inv);
+          if (v.y > yMin && v.z < z) z = v.z;
+        }
+      });
+      return z;
+    };
+    halo.position.z = backAt(halo.position.y - 0.22) - 0.04;
+    mandorla.position.z = backAt(0.3) - 0.05;
   }, undefined, (err) => console.warn('Buddha model not loaded; keeping the procedural one.', err));
 
   let t = 0;
