@@ -93,7 +93,7 @@ export class Nian {
     this.rain = null;     // the 3D petals coming off her tree
     this.rainK = 0;       // 0..1: how hard it is falling
     this.rainWind = new THREE.Vector3(0.45, 0, 0.42);
-    this.elderSpeed = 0.3; // path points per second
+    this.elderSpeed = 0.34; // path points per second
 
     const tx = NIAN.x, tz = NIAN.z, ty = valleyHeight(tx, tz);
     this.treePos = new THREE.Vector3(tx, ty, tz);
@@ -184,6 +184,27 @@ export class Nian {
     this.elder.add(stick);
     this.elder.visible = false;
     this.scene.add(this.elder);
+    // her model (assets/models/elder.glb, Meshy + Mixamo: Walking, Idle_4) replaces the stand-in
+    this.elderMixer = null;
+    this.elderActs = {};
+    this.elderClip = null;
+    new GLTFLoader().load(`./assets/models/elder.glb?v=${window.__V || ''}`, (gltf) => {
+      const m = gltf.scene;
+      this.elderMixer = new THREE.AnimationMixer(m);
+      for (const c of gltf.animations) this.elderActs[c.name] = this.elderMixer.clipAction(c);
+      this._elderPlay('Idle_4', 0);
+      this.elderMixer.update(0);
+      m.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(m, true);
+      const sc = 1.5 / (box.max.y - box.min.y);
+      m.scale.setScalar(sc);
+      m.position.y = -box.min.y * sc;
+      m.rotation.y = Math.PI; // the model faces +Z; the figure convention is -Z
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
+      this.elder.userData.body.visible = false;
+      stick.visible = false;
+      this.elder.add(m);
+    }, undefined, (e) => console.warn('grandmother model not loaded; keeping the stand-in', e));
     this.elderPath = [];
     for (let i = 0; i <= 8; i++) {
       const z = tz - 15 + i * 1.3;
@@ -370,6 +391,18 @@ export class Nian {
   /** Already standing (debug jumps past the meeting). */
   standNow() { this.seated = false; this.riseT = -1; this.stepTo = null; }
 
+  /** Cross-fade the grandmother to another clip. */
+  _elderPlay(name, fade = 0.4) {
+    const next = this.elderActs[name];
+    if (!next || this.elderClip === name) return;
+    const prev = this.elderActs[this.elderClip];
+    this.elderClip = name;
+    next.reset().setEffectiveWeight(1).play();
+    if (name === 'Walking') next.timeScale = 0.45; // an old woman's unhurried step
+    if (prev && fade > 0) next.crossFadeFrom(prev, fade, false);
+    else if (prev) prev.stop();
+  }
+
   /** Cross-fade 阿念 to another clip. */
   _play(name, fade = 0.35) {
     const next = this.acts[name];
@@ -413,7 +446,12 @@ export class Nian {
   }
 
   /** The grandmother starts down the path toward the tree. */
-  elderComes(k = 0) { this.elder.visible = true; this.elderWalking = true; this.elderK = k; }
+  elderComes(k = 0) {
+    this.elder.visible = true; this.elderWalking = true; this.elderK = k;
+    const a = this.elderPath[0], b = this.elderPath[1];
+    this.elder.position.copy(a);
+    this.elder.rotation.y = yawTo(a.x, a.z, b.x, b.z);
+  }
 
   update(dt, traveler) {
     this.t += dt;
@@ -528,11 +566,19 @@ export class Nian {
       const i = Math.floor(this.elderK), f = this.elderK - i;
       const a = this.elderPath[i], b = this.elderPath[Math.min(i + 1, this.elderPath.length - 1)];
       this.elder.position.lerpVectors(a, b, f);
-      this.elder.rotation.y = yawTo(a.x, a.z, b.x, b.z);
+      this.elder.rotation.y = angleDamp(this.elder.rotation.y, yawTo(a.x, a.z, b.x, b.z), 4, dt);
       this.elder.userData.body.position.y = Math.abs(Math.sin(t * 4)) * 0.02;
       if (this.elderK >= this.elderPath.length - 1) this.elderWalking = false;
       // she stops where 阿念 reaches her
       if (this.elder.position.distanceTo(this.girl.position) < 1.3) this.elderWalking = false;
+    } else if (this.elder.visible) {
+      // stopped: she turns to 阿念
+      const e = this.elder.position, gp = this.girl.position;
+      if (Math.hypot(gp.x - e.x, gp.z - e.z) < 4) this.elder.rotation.y = angleDamp(this.elder.rotation.y, yawTo(e.x, e.z, gp.x, gp.z), 3, dt);
+    }
+    if (this.elderMixer && this.elder.visible) {
+      this._elderPlay(this.elderWalking ? 'Walking' : 'Idle_4');
+      this.elderMixer.update(dt);
     }
   }
 

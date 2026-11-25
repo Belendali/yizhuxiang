@@ -1179,44 +1179,34 @@ function updateValley(dt) {
   valley.update(dt * flow, camera.position, vh);
   tmp.set(P.x, camY + 1.9, P.z);
 
+  // Waking, through the traveler's eyes: a slow blink out of the dark, the blossom overhead
+  // (诶 我怎么会在这里); the eyes come down to the valley and look left and right (这是哪);
+  // then the view draws back out of the traveler to behind them.
   if (state === 'wake') {
     const t = stateTime;
     takeTap();
-    // eyes opening: a slow blink out of the dark
     if (t > 0.4) once('w-open1', () => fade(0.55, false, 1600));
     if (t > 2.3) once('w-blink', () => fade(0.9, false, 450));
     if (t > 2.9) once('w-open2', () => fade(0, false, 2600));
-    // the blossom overhead; then the eyes come down to the valley ahead; then the view
-    // draws back out of the traveler to behind them
+    if (t > 3.6) once('vl-w1', () => thought('w1', 4.4));
+    if (t > 9.0) once('vl-w2', () => thought('w2', 4.2));
     orbit(tmp, portrait ? 6.4 : 5.6, null);
     const ahead = v3.set(P.x + 0.4, P.y + 1.3, P.z - 12);
-    const down = ss(t, 4.2, 7.5), back = ss(t, 7.5, 12.5);
+    // a look to the left, to the right, and ahead again
+    ahead.x += 7 * (ss(t, 8.2, 9.8) - 2 * ss(t, 10.4, 12.4) + ss(t, 13.0, 14.4));
+    const down = ss(t, 5.2, 8.0), back = ss(t, 14.2, 18.4);
     const look = tmp.copy(wakeLook).lerp(ahead, down);
     wantLook.lerpVectors(look, wantLook, back);
     wantPos.lerpVectors(wakeFrom, wantPos, back);
     tmp.set(P.x, camY + 1.9, P.z);
     wantPos.y = Math.max(wantPos.y, valleyHeight(wantPos.x, wantPos.z) + 0.3);
     camLag = 0.5;
-    if (t > 8.0) once('w-title', () => titleEl.classList.add('show'));
-    if (t > 14.5) once('w-title-x', () => titleEl.classList.remove('show'));
+    if (t > 13.6) once('w-title', () => titleEl.classList.add('show'));
     const { f, s } = moveInput();
-    if (t > 12.5 || (t > 4 && (f !== 0 || s !== 0))) setState('vLook');
-  }
-
-  // just awake: 诶 我怎么会在这里, a look to the left and the right, 这是哪
-  if (state === 'vLook') {
-    const t = stateTime;
-    takeTap();
-    P.vx = P.vz = 0;
-    if (t > 1.6) once('vl-title', () => titleEl.classList.remove('show'));
-    if (t > 2.0) once('vl-w1', () => thought('w1', 3.0));
-    P.yaw = 0.85 * (ss(t, 4.4, 5.6) - 2 * ss(t, 6.4, 8.0) + ss(t, 8.8, 9.8));
-    placeWalkerOut(dt);
-    if (t > 7.2) once('vl-w2', () => thought('w2', 3.0));
-    const { f, s } = moveInput();
-    if (t > 10.6 || (t > 2.5 && (f !== 0 || s !== 0))) {
+    if (t > 18.4 || (t > 14 && (f !== 0 || s !== 0))) {
       once('vl-w1', () => thought('w1', 3.0));
       setState('valley');
+      after(2.6, () => titleEl.classList.remove('show'));
       setTimeout(() => { if (state === 'valley' && !fired.has('v-moved')) hint('move'); }, 3500);
     }
   }
@@ -1520,7 +1510,7 @@ window.__game = {
     if (target === 'errand') { enterInside(); leaveInside(); }
     if (target === 'talk') { enterInside(); document.body.classList.remove('cine'); PI_.x = 0; PI_.z = INSIDE.stopZ + 0.3; PI_.yaw = 0; camPos.copy(EYE_ALTAR); setState('take'); }
     if (target === 'valley') { fade(1, false, 10); goValley(); }
-    if (target === 'valleyWalk') { fade(1, false, 10); goValley(); stateTime = 12.4; }
+    if (target === 'valleyWalk') { fade(1, false, 10); goValley(); fired.add('vl-w1'); fired.add('vl-w2'); stateTime = 18.3; }
     if (target === 'nian') {
       fade(1, false, 10); goValley(); fade(0, false, 600);
       const g = nian.girl.position; P.x = g.x - 1.5; P.z = g.z + 6; P.yaw = 0; placeWalkerOut(); setState('valley');
