@@ -429,6 +429,7 @@ export function buildInterior(renderer) {
       m.roughness = STATUE.roughness;
       m.envMapIntensity = STATUE.env;
       m.side = THREE.FrontSide; // the scan is closed; skip back faces
+      m.emissiveMap = null; m.emissive.setHex(0); // the export ships an all-black emissive map
     });
     buddha.add(model);
     figure.visible = false;
