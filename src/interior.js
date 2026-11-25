@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { propModel } from './models.js';
+import { propModel, materialsOf } from './models.js';
 import { makeCanvasTexture, rand } from './materials.js';
 import { latticeTexture } from './exterior.js';
 import { ParticleField, Smoke, lightShaft } from './fx.js';
@@ -66,18 +66,18 @@ function clothTexture() {
 
 export function buildInterior(renderer) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0d0b09);
-  scene.fog = new THREE.Fog(0x15110d, 6, 18);
+  scene.background = new THREE.Color(0x171009);
+  scene.fog = new THREE.Fog(0x2a1d12, 8, 22);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.35; // r163+; harmless on older
+  scene.environmentIntensity = 0.55; // r163+; harmless on older
   const r = rand(77);
 
   const W = 9, D = 11, H = 5.4;
   const z0 = 5.5, z1 = z0 - D; // front (entrance) and back wall
-  const wood = new THREE.MeshStandardMaterial({ map: darkWoodTexture(), color: 0x8a776a, roughness: 0.8, envMapIntensity: 0.25 });
+  const wood = new THREE.MeshStandardMaterial({ map: darkWoodTexture(), color: 0xa58a72, roughness: 0.78, envMapIntensity: 0.3 });
   const lacquer = new THREE.MeshStandardMaterial({ color: 0x5a2219, roughness: 0.45, envMapIntensity: 0.6 });
-  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1d1611, roughness: 0.9, envMapIntensity: 0.2 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b1f16, roughness: 0.9, envMapIntensity: 0.2 });
   const bronze = new THREE.MeshStandardMaterial({ color: 0x8a6a3c, metalness: 0.85, roughness: 0.42, envMapIntensity: 1.2 });
   const gold = new THREE.MeshStandardMaterial({ color: 0xc39a52, metalness: 0.8, roughness: 0.38, envMapIntensity: 1.4, emissive: 0x2a1a06, emissiveIntensity: 0.4 });
 
@@ -375,9 +375,82 @@ export function buildInterior(renderer) {
   cushion.position.set(0, 0.08, INSIDE.stopZ - 0.05);
   cushion.receiveShadow = true;
   scene.add(cushion);
+  // the carved golden lotus seat (assets/models/cushion.glb) on a red rug before the altar
+  propModel('cushion', { width: 0.82, anchor: 'bottom' }).then((m) => {
+    m.position.set(0, 0.02, INSIDE.stopZ - 0.05);
+    for (const mt of materialsOf(m)) { mt.color.setHex(0xc9ae86); mt.roughness = 0.5; mt.envMapIntensity = 0.8; }
+    scene.add(m);
+    cushion.visible = false;
+  }).catch(() => {});
+  propModel('rug', { width: 2.3, anchor: 'bottom' }).then((m) => {
+    m.scale.y = 0.25; // a flat rug, not a quilt
+    m.position.set(0, 0.004, INSIDE.stopZ - 0.75);
+    scene.add(m);
+  }).catch(() => {});
+
+  // ---------- Warm lamps: lotus lamps on the floor, paper lanterns overhead ----------
+  const lamps = [];
+  const addLamp = (x, z, { width = 0.42, light = 1.6 } = {}) => {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    scene.add(g);
+    const pl = new THREE.PointLight(0xffa458, light, 4.2, 1.6);
+    pl.position.set(x, 0.45, z);
+    scene.add(pl);
+    const L = { group: g, light: pl, base: light, seed: x * 1.7 + z, mats: [], on: 1 };
+    lamps.push(L);
+    propModel('lotus-lamp', { width, anchor: 'bottom', own: true }).then((m) => {
+      g.add(m);
+      for (const mt of materialsOf(m)) {
+        mt.emissive = new THREE.Color(0xffb066);
+        mt.emissiveMap = mt.map;
+        mt.emissiveIntensity = 0.9;
+        L.mats.push(mt);
+      }
+    }).catch(() => {});
+    return L;
+  };
+  for (const sx of [-1, 1]) {
+    addLamp(sx * 2.05, tz + 0.9);
+    addLamp(sx * 2.3, 0.9, { light: 1.3 });
+  }
+  const hanging = [];
+  for (const sx of [-1, 1]) {
+    const g = new THREE.Group();
+    g.position.set(sx * 2.3, H - 0.3, -0.3);
+    scene.add(g);
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.5, 5), darkMat);
+    cord.position.y = -0.25;
+    g.add(cord);
+    const pl = new THREE.PointLight(0xffa860, 2.6, 7.5, 1.6);
+    pl.position.set(sx * 2.3, H - 1.15, -0.3);
+    scene.add(pl);
+    hanging.push({ light: pl, base: 2.6, seed: sx * 2.3 });
+    propModel('lantern', { height: 0.62, anchor: 'top', own: true }).then((m) => {
+      m.position.y = -0.48;
+      g.add(m);
+      for (const mt of materialsOf(m)) { mt.emissive = new THREE.Color(0xff9a4a); mt.emissiveMap = mt.map; mt.emissiveIntensity = 1.2; }
+    }).catch(() => {});
+  }
+
+  // ---------- The daybed by the left wall, under the window (shown at bedtime) ----------
+  const BED = { x: -3.72, z: 0.3 };
+  const bed = new THREE.Group();
+  bed.position.set(BED.x, 0, BED.z);
+  bed.rotation.y = Math.PI / 2; // the bolster to the wall
+  bed.visible = false;
+  scene.add(bed);
+  const bedMats = [];
+  propModel('daybed', { width: 1.95, anchor: 'bottom', own: true }).then((m) => {
+    bed.add(m);
+    for (const mt of materialsOf(m)) { mt.roughness = Math.max(0.6, mt.roughness); mt.envMapIntensity = 0.5; bedMats.push(mt); }
+  }).catch(() => {});
+  const bedLamp = addLamp(BED.x + 0.15, BED.z - 1.25, { width: 0.4, light: 0 });
+  bedLamp.on = 0;
+  bedLamp.group.visible = false;
 
   // ---------- Light ----------
-  scene.add(new THREE.HemisphereLight(0x8fa3b2, 0x2a2018, 0.45));
+  scene.add(new THREE.HemisphereLight(0xc9b9a6, 0x3a2617, 0.85));
   const win = new THREE.DirectionalLight(0xcfe0f0, 0.9);
   win.position.set(-6, 6, 2);
   win.target.position.set(0, 0, -1);
@@ -389,9 +462,14 @@ export function buildInterior(renderer) {
   const moonLight = new THREE.PointLight(0xd6e4ee, 2.5, 6, 1.5);
   moonLight.position.set(0, 2.8, z1 + 0.5);
   scene.add(moonLight);
-  const fill = new THREE.PointLight(0xffb470, 0, 9, 1.4); // swells after the offering
+  const fill = new THREE.PointLight(0xffb470, 0.8, 9, 1.4); // a warm glow on the altar; swells after the offering
   fill.position.set(0, 2.4, tz + 1.2);
   scene.add(fill);
+
+  // the room's warm wash, from the front of the hall
+  const warm = new THREE.PointLight(0xffb878, 1.4, 12, 1.2);
+  warm.position.set(0, 3.6, 2.4);
+  scene.add(warm);
 
   // ---------- FX ----------
   const dust = new ParticleField({
@@ -438,9 +516,17 @@ export function buildInterior(renderer) {
 
   let t = 0;
   const api = {
-    scene, buddha, cup, newStick, singingBowl, burnerTop, flames, fill, smokeOld, smokeNew, moon, halo: haloMat,
+    scene, buddha, cup, bed, bedPos: new THREE.Vector3(BED.x, 0.45, BED.z), newStick, singingBowl, burnerTop, flames, fill, smokeOld, smokeNew, moon, halo: haloMat,
     cupTop: new THREE.Vector3(-1.3, ty + 0.4, tz + 0.25),
     glow: 0, // 0..1 after offering
+    /** Bedtime: the daybed and its lamp fade in (k 0..1). */
+    showBed(k) {
+      bed.visible = k > 0;
+      bedLamp.group.visible = k > 0;
+      bedLamp.on = k;
+      for (const mt of bedMats) { mt.transparent = k < 1; mt.opacity = k; mt.depthWrite = k > 0.5; }
+      for (const mt of bedLamp.mats) { mt.transparent = k < 1; mt.opacity = k; }
+    },
     update(dt, vh) {
       t += dt;
       for (const f of flames) {
@@ -460,7 +546,13 @@ export function buildInterior(renderer) {
         p.needsUpdate = true;
       }
       for (const s of shafts) s.material.uniforms.uTime.value = t;
-      fill.intensity = api.glow * 1.2;
+      fill.intensity = 0.8 + api.glow * 1.0;
+      for (const L of lamps) {
+        const k = 1 + Math.sin(t * 7 + L.seed) * 0.06 + Math.sin(t * 17 + L.seed * 2) * 0.04;
+        L.light.intensity = (L.base || 1.4) * k * L.on;
+        for (const mt of L.mats) mt.emissiveIntensity = 0.9 * k * L.on;
+      }
+      for (const h of hanging) h.light.intensity = h.base * (1 + Math.sin(t * 5 + h.seed) * 0.04);
       haloMat.emissiveIntensity = 0.25 + api.glow * 0.3;
       dust.update(dt, dust.uniforms.uCenter.value, vh);
       dust.uniforms.uCenter.value.set(0, 2.5, 0);
