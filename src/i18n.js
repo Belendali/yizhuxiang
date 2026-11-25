@@ -10,7 +10,7 @@ export const LANGS = [
 const S = {
   zh: {
     t1: '多谢你', t2: '肯为一座旧庙停下的人　不多',
-    n1: '今夜　安心睡吧', n2: '明早　雪会停', n3: '往后的路　我陪你走一段',
+    n1: '今夜　安心睡吧', n2: '明早　雪会停', n3: '明天　再继续上路吧',
     tk: '寺中失物', tk_plaque: '匾', tk_lantern: '灯', tk_bell: '铃', tk_bowl: '钵',
     ch1Title: '落花谷', ch1Sub: '第一章', w1: '寺　不见了', w2: '雪　也停了',
     docTitle: '一炷香 · 序章',
@@ -35,7 +35,7 @@ const S = {
   },
   en: {
     t1: 'Thank you', t2: 'Not many would stop for an old temple',
-    n1: 'Sleep well tonight', n2: 'By morning the snow will stop', n3: 'For the road ahead, I will walk a while with you',
+    n1: 'Sleep well tonight', n2: 'By morning the snow will stop', n3: 'Tomorrow, go on your way again',
     tk: 'Lost things of the temple', tk_plaque: 'Plaque', tk_lantern: 'Lantern', tk_bell: 'Bell', tk_bowl: 'Bowl',
     ch1Title: 'Falling Blossom Valley', ch1Sub: 'Chapter One', w1: 'The temple is gone', w2: 'And the snow has stopped',
     docTitle: 'A Stick of Incense · Prologue',
@@ -60,7 +60,7 @@ const S = {
   },
   ja: {
     t1: 'ありがとう', t2: '古い寺のために　足を止める者は少ない',
-    n1: '今夜は　ゆっくりお休み', n2: '朝には　雪もやむ', n3: 'この先の道　しばらく共に歩こう',
+    n1: '今夜は　ゆっくりお休み', n2: '朝には　雪もやむ', n3: '明日　また旅を続けなさい',
     tk: '寺の落としもの', tk_plaque: '額', tk_lantern: '灯', tk_bell: '鈴', tk_bowl: '鉢',
     ch1Title: '落花の谷', ch1Sub: '第一章', w1: '寺が　消えた', w2: '雪も　やんだ',
     docTitle: '一炷香 · 序章',

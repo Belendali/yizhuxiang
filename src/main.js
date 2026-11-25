@@ -816,7 +816,7 @@ function enterInside() {
 // Talks with the Buddha. A step either just speaks ({say}) or asks: the traveler answers
 // or says nothing, and the Buddha answers that.
 // First, once the incense is offered: who are you, and an errand. Second, after the repair:
-// no teaching, just thanks, a night's rest, and a promise to walk with the traveler a while.
+// no teaching, just thanks, a night's rest, and the road again tomorrow.
 const TALK_FIRST = [
   { say: ['b1'] },
   { ask: ['q1'], choices: ['a1a', 'a1b'], reply: { a1a: ['r1a'], a1b: ['r1b'], sil: ['r1s'] } },
@@ -1275,13 +1275,25 @@ window.__game = {
   look(dx, dy) { lookBy(dx, dy); },
   jump(target) {
     titleEl.classList.remove('show');
+    hint('');
+    // finish the errand without the "进来吧" that would otherwise talk over the scene
+    const quietComplete = () => { const f = quest.onAllHome; quest.onAllHome = null; quest.completeAll(); quest.onAllHome = f; };
     if (target === 'walk') { setState('walk'); }
     if (target === 'repaired') { fired.add('visited'); quest.completeAll(); outside.lanternsOn = 1; doorAjarWant = doorAjar = 0.1; P.x = 0; P.z = DOOR.y + 1.2; P.yaw = 0; placeWalkerOut(); setState('walk'); }
     if (target === 'errand') { enterInside(); leaveInside(); }
     if (target === 'talk') { enterInside(); document.body.classList.remove('cine'); PI_.x = 0; PI_.z = INSIDE.stopZ + 0.3; PI_.yaw = 0; camPos.copy(EYE_ALTAR); setState('take'); }
     if (target === 'valley') { fade(1, false, 10); goValley(); }
-    if (target === 'night') { fired.add('visited'); quest.completeAll(); enterInside(); document.body.classList.remove('cine'); PI_.x = 0; PI_.z = INSIDE.stopZ; PI_.yaw = 0; camPos.copy(EYE_ALTAR); goodNight(); }
-    if (target === 'talk2') { fired.add('visited'); quest.completeAll(); enterInside(); PI_.x = 0; PI_.z = INSIDE.stopZ + 0.3; PI_.yaw = 0; camPos.copy(EYE_ALTAR); setState('settle'); }
+    if (target === 'valleyWalk') { fade(1, false, 10); goValley(); stateTime = 12.4; }
+    if (target === 'talk1') {
+      // the incense already offered, the first talk begins
+      enterInside(); document.body.classList.remove('cine'); PI_.x = 0; PI_.z = INSIDE.stopZ; PI_.yaw = 0; walkerIn.group.position.set(PI_.x, 0, PI_.z);
+      stick.visible = true; stickMode = 'placed';
+      stickPos.copy(inside.burnerTop).add(new THREE.Vector3(-0.05, -0.09, 0.02)); stick.userData.emberMat.emissiveIntensity = 5; inside.smokeNew.active = true;
+      camPos.copy(EYE_ALTAR); setState('talk');
+      after(1.2, () => talk(TALK_FIRST, 0, () => after(0.8, leaveInside)));
+    }
+    if (target === 'night') { fired.add('visited'); quietComplete(); enterInside(); document.body.classList.remove('cine'); PI_.x = 0; PI_.z = INSIDE.stopZ; PI_.yaw = 0; camPos.copy(EYE_ALTAR); goodNight(); }
+    if (target === 'talk2') { fired.add('visited'); quietComplete(); enterInside(); PI_.x = 0; PI_.z = INSIDE.stopZ + 0.3; PI_.yaw = 0; camPos.copy(EYE_ALTAR); setState('settle'); }
     if (target === 'door') { P.x = 0; P.z = DOOR.y + 0.6; P.yaw = 0; placeWalkerOut(); setState('walk'); }
     if (target === 'intro') { setState('title'); stateTime = 2; tapQueued = true; }
     if (target === 'trudge') { P.x = 0; P.z = 34; P.yaw = 0; placeWalkerOut(); setState('walk'); }
@@ -1297,3 +1309,55 @@ window.__game = {
     }
   },
 };
+
+// ---------------------------------------------------------------- test switch
+// Add ?test to the address for a small panel (bottom left) that jumps to any point of the
+// story. Each jump reloads the page as ?test&at=<node>, so it always starts clean.
+// Without ?test nothing of this appears.
+const TEST_WORLDS = [
+  ['序章 · 雪寺', [
+    ['', '标题'], ['intro', '开场'], ['trudge', '风雪'], ['stairs', '台阶'], ['door', '殿门'],
+    ['inside', '进殿'], ['walkin', '殿内'], ['altar', '上香'], ['talk1', '对话一'],
+    ['errand', '修庙'], ['repaired', '归位'], ['talk2', '对话二'], ['night', '入夜'],
+  ]],
+  ['第一章 · 落花谷', [['valley', '醒来'], ['valleyWalk', '漫步']]],
+  ['第二章 · 渡口', []], ['第三章 · 镜城', []], ['第四章 · 雾山', []], ['第五章 · 人间', []], ['终章', []],
+];
+const testParams = new URLSearchParams(location.search);
+if (testParams.has('test')) {
+  const at = testParams.get('at') || '';
+  const panel = document.createElement('div');
+  panel.id = 'test';
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'test-toggle';
+  toggle.textContent = 'TEST';
+  const list = document.createElement('div');
+  list.className = 'test-list';
+  for (const [world, nodes] of TEST_WORLDS) {
+    const w = document.createElement('div');
+    w.className = 'test-world' + (nodes.length ? '' : ' empty');
+    const h = document.createElement('div');
+    h.className = 'test-name';
+    h.textContent = nodes.length ? world : `${world}（未做）`;
+    w.append(h);
+    const row = document.createElement('div');
+    row.className = 'test-nodes';
+    for (const [id, label] of nodes) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      if (id === at) b.classList.add('on');
+      b.addEventListener('click', () => { location.search = id ? `?test&at=${id}` : '?test'; });
+      row.append(b);
+    }
+    w.append(row);
+    list.append(w);
+  }
+  panel.append(toggle, list);
+  toggle.addEventListener('click', () => panel.classList.toggle('open'));
+  // the panel's clicks stay in the panel (no walking, no pointer lock)
+  for (const ev of ['pointerdown', 'pointerup', 'click']) panel.addEventListener(ev, (e) => e.stopPropagation());
+  document.body.append(panel);
+  if (at) setTimeout(() => window.__game.jump(at), 300);
+}

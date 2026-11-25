@@ -98,6 +98,20 @@
   html:lang(en) .line.voice .ch { transform: translateY(0.15em); transition-delay: calc(var(--i) * 70ms); }
   html:lang(en) body:not(.out) .line.voice.dream { top: 40%; white-space: normal; width: min(86vw, 620px); text-align: center; }
 
+  /* Test switch (only with ?test): jump to any point of the story */
+  #test { position: fixed; left: calc(14px + env(safe-area-inset-left)); bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 50; font-family: -apple-system, "PingFang SC", sans-serif; }
+  #test .test-toggle { font: 600 11px/1 -apple-system, sans-serif; letter-spacing: 0.12em; color: #fff; background: rgba(20, 24, 26, 0.72); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 999px; padding: 8px 12px; cursor: pointer; }
+  #test.open .test-toggle { background: #c8553d; border-color: #c8553d; }
+  #test .test-list { display: none; position: absolute; left: 0; bottom: 40px; width: min(320px, calc(100vw - 28px)); max-height: 70vh; overflow-y: auto; padding: 12px; border-radius: 12px; background: rgba(20, 24, 26, 0.9); border: 1px solid rgba(255, 255, 255, 0.12); }
+  #test.open .test-list { display: block; }
+  #test .test-world + .test-world { margin-top: 10px; }
+  #test .test-name { font-size: 11px; color: rgba(255, 255, 255, 0.55); margin-bottom: 6px; }
+  #test .test-world.empty .test-name { color: rgba(255, 255, 255, 0.28); margin-bottom: 0; }
+  #test .test-nodes { display: flex; flex-wrap: wrap; gap: 5px; }
+  #test .test-nodes button { font: 13px/1 -apple-system, "PingFang SC", sans-serif; color: #f1eee8; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px; padding: 6px 9px; cursor: pointer; }
+  #test .test-nodes button:hover { background: rgba(255, 255, 255, 0.18); }
+  #test .test-nodes button.on { background: #c8553d; border-color: #c8553d; color: #fff; }
+
   /* The errand, top-left: name, then the four things */
   #task {
     position: absolute; left: calc(22px + env(safe-area-inset-left)); top: calc(20px + env(safe-area-inset-top));
