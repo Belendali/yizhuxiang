@@ -1387,6 +1387,8 @@ requestAnimationFrame(frame);
 
 // Debug hook for verification: window.__game.jump('ending') etc.
 window.__game = {
+  // render one frame now and return it as a JPEG (works while the tab is in the background)
+  shot(q = 0.75) { composer.render(); return renderer.domElement.toDataURL('image/jpeg', q); },
   get state() { return state; },
   get inside() { return inside; },
   get outside() { return outside; },

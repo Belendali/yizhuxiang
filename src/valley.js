@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rand, makeNoise2D } from './materials.js';
 import { ParticleField } from './fx.js';
-import { propModel, propParts } from './models.js';
+import { propModel, propParts, instancesFromModel } from './models.js';
 
 // 第一章 · 落花谷: the valley the traveler wakes in. A spring morning, blossom trees along a
 // winding earth path, petals always falling. The traveler walks from +Z toward -Z, as at the temple.
@@ -14,6 +14,8 @@ export const VALLEY_START = { x: 2.3, z: 6.2 };
 const HERO = { x: 4.4, z: 4.6, s: 1.75 }; // the old tree the traveler wakes under
 // 阿念's tree, a little way down the path (her story lives in anian.js); kept clear of other trees
 export const NIAN = { x: 1.2, z: -12 };
+// where 阿念's fallen sprigs lie, relative to her tree
+export const SPRIGS = [[-6.5, 3.5], [5.5, -6], [9.5, 2.5], [-2.5, -12.5], [12, -11], [-9.5, -4.5], [3, 9.5]];
 
 export function valleyPathX(z) {
   return Math.sin(z * 0.045) * 3.2 + Math.sin(z * 0.11) * 0.8;
@@ -222,23 +224,65 @@ export function buildValley() {
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // ---------- A few mossy stones ----------
+  // ---------- A few mossy stones (a scanned rock pile, placed many times) ----------
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x8b9184, roughness: 0.95, flatShading: true });
-  const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), rockMat, 30);
+  const rockGeo = new THREE.DodecahedronGeometry(1, 0).scale(0.5, 0.4, 0.45).translate(0, 0.25, 0);
+  const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 30);
   const rm = new THREE.Matrix4(), rq = new THREE.Quaternion(), rs = new THREE.Vector3(), rp = new THREE.Vector3();
   let ri = 0;
   for (let i = 0; i < 30; i++) {
     const z = 12 - r() * 120, side = r() > 0.5 ? 1 : -1;
     const x = valleyPathX(z) + side * (2.4 + r() * 14);
     const s = 0.25 + r() * 0.6;
-    rq.setFromEuler(new THREE.Euler(r() * 3, r() * 3, r() * 3));
-    rm.compose(rp.set(x, valleyHeight(x, z) - s * 0.35, z), rq, rs.set(s * 1.3, s * 0.8, s));
+    r(); const yaw = r() * 6.28; r(); // (three draws, as before, so the rest of the valley keeps its layout)
+    if (Math.hypot(x - NIAN.x, z - NIAN.z) < 3) continue;
+    rq.setFromAxisAngle(rs.set(0, 1, 0), yaw);
+    rm.compose(rp.set(x, valleyHeight(x, z) - s * 0.08, z), rq, rs.setScalar(s * 1.7));
     rocks.setMatrixAt(ri++, rm);
-    if (s > 0.5) colliders.push({ x, z, r: s });
+    if (s > 0.5) colliders.push({ x, z, r: s * 0.8 });
   }
   rocks.count = ri;
   rocks.castShadow = rocks.receiveShadow = true;
   scene.add(rocks);
+  instancesFromModel('rocks', { width: 1, anchor: 'bottom' }, rocks, scene).catch((e) => console.warn('rock model not loaded', e));
+
+  // ---------- Grass clumps and a few wild flowers (one draw per kind) ----------
+  {
+    const gr = rand(31);
+    const kinds = [
+      { part: 'grass0', height: 0.55, n: 70 }, { part: 'grass1', height: 0.5, n: 60 },
+      { part: 'grass2', height: 0.5, n: 60 }, { part: 'grass3', height: 0.5, n: 60 },
+      { part: 'grass4', height: 0.5, n: 60 }, { part: 'flowerY', height: 0.5, n: 26 }, { part: 'flowerB', height: 0.45, n: 30 },
+    ];
+    const clear = SPRIGS.map(([dx, dz]) => [NIAN.x + dx, NIAN.z + dz]);
+    const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s4 = new THREE.Vector3(), p4 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+    for (const k of kinds) {
+      const mats = [];
+      for (let tries = 0; mats.length < k.n && tries < k.n * 6; tries++) {
+        const z = 10 - Math.pow(gr(), 1.3) * 95;
+        const x = valleyPathX(z) + (gr() > 0.5 ? 1 : -1) * (1.3 + gr() * 15);
+        if (clear.some(([cx, cz]) => Math.hypot(x - cx, z - cz) < 1.4)) continue;
+        if (Math.hypot(x - NIAN.x, z - NIAN.z) < 1.2) continue;
+        const sc = 0.75 + gr() * 0.6;
+        m4.compose(p4.set(x, valleyHeight(x, z) - 0.02, z), q4.setFromAxisAngle(up, gr() * 6.28), s4.setScalar(sc));
+        mats.push(m4.clone());
+      }
+      propParts('grass', { part: k.part, height: k.height, anchor: 'bottom' }).then((parts) => {
+        for (const pt of parts) {
+          // the scan's greens are deep; lift them toward the valley's soft, sunlit ground
+          if (!pt.material.userData.lifted) {
+            pt.material.userData.lifted = true;
+            pt.material.color.multiply(new THREE.Color(1.7, 1.75, 1.3));
+            pt.material.emissive = new THREE.Color(0x1c2410);
+          }
+          const inst = new THREE.InstancedMesh(pt.geometry, pt.material, mats.length);
+          mats.forEach((m, i) => inst.setMatrixAt(i, m));
+          inst.receiveShadow = true;
+          scene.add(inst);
+        }
+      }).catch((e) => console.warn('grass not loaded', e));
+    }
+  }
 
   // ---------- Far hills, pale in the haze ----------
   const hillMat = new THREE.MeshStandardMaterial({ color: 0x9da7a6, roughness: 1, flatShading: true });

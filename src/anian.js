@@ -1,13 +1,15 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { propModel } from './models.js';
-import { valleyHeight, valleyPathX, NIAN } from './valley.js';
+import { valleyHeight, valleyPathX, NIAN, SPRIGS } from './valley.js';
 
 // 第一章 · 落花谷: 阿念 and her tree. Her blossom is falling and her grandmother is not back
 // yet; she asks the traveler to put the fallen sprigs back. Each sprig found flies home to
 // the tree and that part of the crown blooms again. When the tree is full a gust takes it
 // all, and the grandmother walks in: she came back for the falling (落花祭).
 //
-// The girl and the grandmother are simple turned figures for now (stand-ins for models).
+// 阿念 is a rigged model (idle, run, bow); until it loads, and for the grandmother, a simple
+// turned figure stands in.
 
 const ss = THREE.MathUtils.smoothstep;
 const damp = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * dt));
@@ -127,6 +129,30 @@ export class Nian {
     this.hop = 0;
     this.lookAt = null;      // Vector3 she turns toward, or null for the tree
     this.runTo = null;
+    this.mixer = null;
+    this.acts = {};
+    this.clip = null;
+    new GLTFLoader().load(`./assets/models/anian.glb?v=${window.__V || ''}`, (gltf) => {
+      const m = gltf.scene;
+      this.mixer = new THREE.AnimationMixer(m);
+      for (const c of gltf.animations) this.acts[c.name] = this.mixer.clipAction(c);
+      const bow = this.acts.Formal_Bow;
+      if (bow) { bow.setLoop(THREE.LoopOnce); bow.clampWhenFinished = true; }
+      this.mixer.addEventListener('finished', (e) => { if (e.action === bow && this.girlMode === 'wave') this.girlMode = 'idle'; });
+      this._play('Idle_9', 0);
+      this.mixer.update(0);
+      // measure her standing in the idle pose (a skinned box needs the bones posed first)
+      m.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(m, true);
+      const s = 1.12 / (box.max.y - box.min.y);
+      m.scale.setScalar(s);
+      m.position.y = this._foot = -box.min.y * s;
+      m.rotation.y = Math.PI; // the model faces +Z; the figure convention is -Z
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
+      this.model = m;
+      this.girl.userData.body.visible = false;
+      this.girl.add(m);
+    });
 
     // ---------- the grandmother, far down the path, hidden until the end ----------
     this.elder = figure({ height: 1.38, robe: 0x7a6e62, sash: 0x4f463e, hair: 0x6b625a, white: true, bent: 0.22 });
@@ -230,8 +256,7 @@ export class Nian {
   _makeSprigs() {
     const tex = glowTexture();
     const mat = new THREE.MeshStandardMaterial({ map: this.foliageMap, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.8, emissive: 0x5a2a36 });
-    const spots = [[-6.5, 3.5], [5.5, -6], [9.5, 2.5], [-2.5, -12.5], [12, -11], [-9.5, -4.5], [3, 9.5]];
-    spots.forEach(([dx, dz], i) => {
+    SPRIGS.forEach(([dx, dz], i) => {
       const x = this.treePos.x + dx, z = this.treePos.z + dz, y = valleyHeight(x, z);
       const obj = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), mat);
       obj.castShadow = true;
@@ -256,6 +281,17 @@ export class Nian {
       this.sprigs.push({ obj, glow, motes, seeds, state: 'lying', x, z });
     });
     if (this.active) this.activate();
+  }
+
+  /** Cross-fade 阿念 to another clip. */
+  _play(name, fade = 0.35) {
+    const next = this.acts[name];
+    if (!next || this.clip === name) return;
+    const prev = this.acts[this.clip];
+    this.clip = name;
+    next.reset().setEffectiveWeight(1).play();
+    if (prev && fade > 0) next.crossFadeFrom(prev, fade, false);
+    else if (prev) prev.stop();
   }
 
   get total() { return 7; }
@@ -400,6 +436,7 @@ export class Nian {
 
     // 阿念: turns toward the traveler when near, else up at her tree; hops when a part blooms
     const g = this.girl;
+    let moving = false;
     if (this.girlMode === 'run' && this.runTo) {
       const dx = this.runTo.x - g.position.x, dz = this.runTo.z - g.position.z, d = Math.hypot(dx, dz);
       if (d > 0.9) {
@@ -407,6 +444,7 @@ export class Nian {
         g.position.x += dx / d * sp; g.position.z += dz / d * sp;
         this.girlYaw = angleDamp(this.girlYaw, yawTo(g.position.x, g.position.z, this.runTo.x, this.runTo.z), 8, dt);
         g.userData.body.position.y = Math.abs(Math.sin(t * 11)) * 0.05;
+        moving = true;
       } else {
         this.girlMode = 'idle';
         g.userData.body.position.y = 0;
@@ -426,6 +464,12 @@ export class Nian {
     if (this.girlMode === 'wave') {
       g.userData.armR.rotation.z = -2.4 + Math.sin(t * 9) * 0.35;
     } else g.userData.armR.rotation.z = damp(g.userData.armR.rotation.z, 0.28, 4, dt);
+    if (this.model) {
+      // the model: a little hop when a part blooms, then the right clip for what she is doing
+      this.model.position.y = g.userData.body.position.y - (moving ? Math.abs(Math.sin(t * 11)) * 0.05 : 0) + this._foot;
+      this._play(moving ? 'Run_02' : this.girlMode === 'wave' ? 'Formal_Bow' : 'Idle_9', this.girlMode === 'wave' ? 0.5 : 0.3);
+      this.mixer.update(dt);
+    }
 
     // the grandmother: a slow walk up the path, the stick ticking along
     if (this.elderWalking) {
