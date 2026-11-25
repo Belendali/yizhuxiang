@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rand, makeNoise2D } from './materials.js';
 import { ParticleField } from './fx.js';
+import { propModel, propParts } from './models.js';
 
 // 第一章 · 落花谷: the valley the traveler wakes in. A spring morning, blossom trees along a
 // winding earth path, petals always falling. The traveler walks from +Z toward -Z, as at the temple.
@@ -151,6 +152,44 @@ export function buildValley() {
   blossom.castShadow = true;
   blossom.receiveShadow = true;
   scene.add(blossom);
+
+  // The sculpted cherry trees take over once they load: the wide old one for the hero,
+  // two lighter kinds (alternating) for the rest. The turned stand-ins above stay until then.
+  const others = trees.slice(1);
+  const kinds = [
+    { name: 'cherry-s', height: 3.5, list: others.filter((_, i) => i % 2 === 0) },
+    { name: 'cherry-bloom-s', height: 4.3, list: others.filter((_, i) => i % 2 === 1) },
+  ];
+  Promise.all([
+    propModel('cherry', { height: 6.6, anchor: 'bottom' }).then((m) => {
+      m.position.set(HERO.x, valleyHeight(HERO.x, HERO.z) - 0.08, HERO.z);
+      m.rotation.y = 2.2;
+      scene.add(m);
+    }),
+    ...kinds.map((k) => propParts(k.name, { height: k.height, anchor: 'bottom' }).then((parts) => {
+      const tm = new THREE.Matrix4(), tq = new THREE.Quaternion(), tv = new THREE.Vector3(), ts = new THREE.Vector3();
+      for (const p of parts) {
+        const inst = new THREE.InstancedMesh(p.geometry, p.material, k.list.length);
+        k.list.forEach((t, i) => {
+          tq.setFromAxisAngle(tv.set(0, 1, 0), (t.x * 12.9898 + t.z * 78.233) % (Math.PI * 2));
+          const sc = t.s * (0.9 + ((t.x * 3.7 + t.z * 1.3) % 1 + 1) % 1 * 0.25);
+          tm.compose(tv.set(t.x, valleyHeight(t.x, t.z) - 0.08, t.z), tq, ts.set(sc, sc, sc));
+          inst.setMatrixAt(i, tm);
+        });
+        inst.castShadow = inst.receiveShadow = true;
+        scene.add(inst);
+      }
+    })),
+  ]).then(() => {
+    woodMesh.visible = false; blossom.visible = false;
+    // a touch of warm self-light, like the old blossom had, so the crowns read pink in the shade
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.material.vertexColors || o.material.userData.lit) return;
+      o.material.userData.lit = true;
+      o.material.emissive = new THREE.Color(0x3a2228);
+    });
+  })
+    .catch((e) => console.warn('cherry models not loaded; keeping the turned trees', e));
 
   // ---------- Ground: grass, an earth path, petals under the trees ----------
   const gGeo = new THREE.PlaneGeometry(300, 300, 230, 230);

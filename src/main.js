@@ -1311,9 +1311,8 @@ window.__game = {
 };
 
 // ---------------------------------------------------------------- test switch
-// Add ?test to the address for a small panel (bottom left) that jumps to any point of the
-// story. Each jump reloads the page as ?test&at=<node>, so it always starts clean.
-// Without ?test nothing of this appears.
+// The third corner icon opens a list of every world and story point. Picking one reloads
+// the page as ?at=<node>, so it always starts from a clean state.
 const TEST_WORLDS = [
   ['序章 · 雪寺', [
     ['', '标题'], ['intro', '开场'], ['trudge', '风雪'], ['stairs', '台阶'], ['door', '殿门'],
@@ -1323,17 +1322,21 @@ const TEST_WORLDS = [
   ['第一章 · 落花谷', [['valley', '醒来'], ['valleyWalk', '漫步']]],
   ['第二章 · 渡口', []], ['第三章 · 镜城', []], ['第四章 · 雾山', []], ['第五章 · 人间', []], ['终章', []],
 ];
-const testParams = new URLSearchParams(location.search);
-if (testParams.has('test')) {
-  const at = testParams.get('at') || '';
-  const panel = document.createElement('div');
-  panel.id = 'test';
-  const toggle = document.createElement('button');
-  toggle.type = 'button';
-  toggle.className = 'test-toggle';
-  toggle.textContent = 'TEST';
-  const list = document.createElement('div');
-  list.className = 'test-list';
+const testAt = new URLSearchParams(location.search).get('at') || '';
+{
+  const wrap = document.createElement('div');
+  wrap.className = 'testWrap';
+  const btn = document.createElement('button');
+  btn.id = 'testBtn';
+  btn.className = 'icon';
+  btn.type = 'button';
+  btn.title = 'Test';
+  btn.setAttribute('aria-label', 'Test');
+  btn.setAttribute('aria-expanded', 'false');
+  // a path through three stops
+  btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18c0-4 12-2 12-6s-12-2-12-6" /><circle cx="6" cy="18" r="1.8" /><circle cx="18" cy="12" r="1.8" /><circle cx="6" cy="6" r="1.8" /></svg>';
+  const menu = document.createElement('div');
+  menu.id = 'testMenu';
   for (const [world, nodes] of TEST_WORLDS) {
     const w = document.createElement('div');
     w.className = 'test-world' + (nodes.length ? '' : ' empty');
@@ -1347,17 +1350,19 @@ if (testParams.has('test')) {
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = label;
-      if (id === at) b.classList.add('on');
-      b.addEventListener('click', () => { location.search = id ? `?test&at=${id}` : '?test'; });
+      if (id === testAt) b.classList.add('on');
+      b.addEventListener('click', () => { location.search = id ? `?at=${id}` : ''; });
       row.append(b);
     }
     w.append(row);
-    list.append(w);
+    menu.append(w);
   }
-  panel.append(toggle, list);
-  toggle.addEventListener('click', () => panel.classList.toggle('open'));
-  // the panel's clicks stay in the panel (no walking, no pointer lock)
-  for (const ev of ['pointerdown', 'pointerup', 'click']) panel.addEventListener(ev, (e) => e.stopPropagation());
-  document.body.append(panel);
-  if (at) setTimeout(() => window.__game.jump(at), 300);
+  wrap.append(btn, menu);
+  cornerEl.prepend(wrap);
+  const openTest = (open) => { menu.classList.toggle('open', open); btn.setAttribute('aria-expanded', String(open)); };
+  btn.addEventListener('pointerdown', (e) => { e.stopPropagation(); openLangMenu(false); openTest(!menu.classList.contains('open')); });
+  menu.addEventListener('pointerdown', (e) => e.stopPropagation());
+  window.addEventListener('pointerdown', () => openTest(false));
+  langBtn.addEventListener('pointerdown', () => openTest(false));
+  if (testAt) setTimeout(() => window.__game.jump(testAt), 300);
 }

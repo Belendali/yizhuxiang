@@ -1,6 +1,6 @@
 # 一炷香 · 序章（雪寺）
 
-A short 3D web prologue: a traveler crosses a snowfield to a mountain temple, finds the things it has lost in the snow, talks with the Buddha, and offers the first stick of incense. Built with Three.js. Most geometry, textures and sound are procedural; the Buddha, the traveler, the paper lanterns, the roof-corner bells and the singing bowl are models in assets/models (each falls back to a procedural stand-in if it fails to load).
+A short 3D web prologue: a traveler crosses a snowfield to a mountain temple, finds the things it has lost in the snow, talks with the Buddha, and offers the first stick of incense. Built with Three.js. Most geometry, textures and sound are procedural; the Buddha, the traveler, the paper lanterns, the roof-corner bells, the singing bowl, the path's stone lamps, the snowy pines (and a bare winter tree) around the temple, and the cherry trees of 落花谷 are models in assets/models (each falls back to a procedural stand-in if it fails to load). The trees were scanned at millions of triangles; they are shipped with their texture colours baked into vertex colours and simplified to 15k–250k triangles.
 
 ## Run
 
@@ -55,7 +55,7 @@ Spots and dialogue live in `src/main.js` (`spots`, `TALK_FIRST`, `TALK_AFTER`); 
 - `src/main.js`: renderer, post-processing, story state machine, camera, input.
 - `src/exterior.js`: snowy valley, temple, roof, rope and tassels, lanterns, rocks, pines.
 - `src/repair.js`: the repair quest: the lost things lying in the snow (with a warm light pool and rising motes), carrying them, and their flight home.
-- `src/models.js`: loads the prop models (lantern, bell, singing bowl) once, then fits and anchors a clone for each place they are used.
+- `src/models.js`: loads each model once, then fits and anchors a clone for each place it is used; `propParts` / `instancesFromModel` turn a model into InstancedMeshes for the forests.
 - `src/temple-detail.js`: the temple's finer architecture: bracket sets and rafters under the eaves, the painted main beam, the 雪寺 plaque, lacquered pillars on carved bases, timber-framed plaster walls, wind chimes at the roof corners, the finial, and the platform's balustrade and stair borders.
 - `src/interior.js`: hall, altar, Buddha, candles, burner, dust and smoke.
 - `src/traveler.js`: the traveler, with walking and bowing animation.
@@ -65,6 +65,6 @@ Spots and dialogue live in `src/main.js` (`spots`, `TALK_FIRST`, `TALK_AFTER`); 
 
 ## Debug
 
-**Test switch:** open the page with `?test` at the end of the address (for example https://belendali.github.io/yizhuxiang/?test). A TEST button appears bottom left; it opens a list of every world and story point (序章: 开场, 风雪, 台阶, 殿门, 进殿, 殿内, 上香, 对话一, 修庙, 归位, 对话二, 入夜; 第一章: 醒来, 漫步). Each one reloads the page straight into that point (`?test&at=talk2`, etc.). Chapters not built yet are listed in grey. Without `?test` the panel never appears.
+**Test switch:** the first of the three icons in the top-right corner (a path with three stops) opens a list of every world and story point (序章: 标题, 开场, 风雪, 台阶, 殿门, 进殿, 殿内, 上香, 对话一, 修庙, 归位, 对话二, 入夜; 第一章: 醒来, 漫步). Picking one reloads the page straight into that point (`?at=talk2`, etc.). Chapters not built yet are listed in grey.
 
 In the browser console, `__game.jump('intro' | 'trudge' | 'stairs' | 'door' | 'inside' | 'walkin' | 'talk1' (incense offered, the first talk begins) | 'errand' (just out of the hall, things glowing) | 'repaired' | 'talk2' | 'night' | 'valley' | 'valleyWalk' | 'altar' | 'ending')` jumps to a state, and `__game.advance(seconds, holding)` fast-forwards the simulation. `__game.put(x, z)` moves the traveler outside, `__game.answer('a1a' | 'a1b' | 'sil')` answers the Buddha, and `__game.quest` is the repair quest.

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { snowyMaterial, makeCanvasTexture, rand, makeNoise2D } from './materials.js';
 import { addTempleDetail } from './temple-detail.js';
-import { propModel, materialsOf } from './models.js';
+import { propModel, materialsOf, instancesFromModel } from './models.js';
 
 // World layout (meters). Traveler walks from +Z toward the temple at -Z.
 export const LAYOUT = {
@@ -724,6 +724,19 @@ export function buildExterior() {
     }
     return g;
   };
+  // Only the lamp's pale paper window glows (the bright parts of its texture), not its stone.
+  const glowPaper = (mt) => {
+    if (mt.userData.glowPaper) return;
+    mt.userData.glowPaper = true;
+    mt.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        #ifdef USE_MAP
+          float paperLum = dot(texture2D(map, vMapUv).rgb, vec3(0.299, 0.587, 0.114));
+          totalEmissiveRadiance += vec3(1.0, 0.6, 0.28) * smoothstep(0.5, 0.78, paperLum) * 2.6;
+        #endif`);
+    };
+    mt.needsUpdate = true;
+  };
   const stoneLanterns = [];
   for (const [x, z, lit] of [[-3.4, 7.8, true], [3.4, 7.8, true], [-3.6, 17.5, false], [3.6, 17.5, false], [-3.9, 27, false], [3.9, 27, false]]) {
     const sl = makeStoneLantern();
@@ -731,6 +744,12 @@ export function buildExterior() {
     sl.rotation.y = r() * 0.3;
     scene.add(sl);
     stoneLanterns.push(sl);
+    // the carved stone lamp replaces the stacked shapes once it loads
+    propModel('garden-lamp', { height: 2.35, anchor: 'bottom' }).then((mdl) => {
+      for (const c of sl.children) c.visible = false;
+      for (const mt of materialsOf(mdl)) glowPaper(mt);
+      sl.add(mdl);
+    }).catch(() => {});
     colliders.push({ x: sl.position.x, z, r: 0.6 });
     if (lit) {
       const pl = new THREE.PointLight(0xffa25a, 4, 7, 1.8);
@@ -819,6 +838,10 @@ export function buildExterior() {
     putPine(x, z, 0.8 + r() * 1.1);
   }
   for (const p of pineKinds) { p.castShadow = true; p.receiveShadow = true; scene.add(p); }
+  // the sculpted snowy pines take over each kind's placements once they load
+  ['snowy-pine', 'snowy-tree', 'winter-tree'].forEach((name, i) => {
+    instancesFromModel(name, { height: 4.8, anchor: 'bottom' }, pineKinds[i], scene).catch((e) => console.warn('pine model not loaded', e));
+  });
 
   // ---------- Cliffs: the valley that holds the temple ----------
   const cliffMat = snowyMaterial({ color: 0x66746a, snow: 0xf0f3f1, threshold: 0.48, softness: 0.09, noiseScale: 0.18, noiseAmt: 0.55, variation: 0.3, flat: true });
