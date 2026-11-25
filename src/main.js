@@ -216,9 +216,11 @@ function placeVoices() {
   }
 }
 // A passing thought of the traveler's, in the left column.
+let thoughtEl = null;
 function thought(key, hold = 4) {
-  const el = say(key, 'v left');
-  after(hold, () => unsay(el));
+  unsay(thoughtEl); // one thought at a time in the column
+  const el = thoughtEl = say(key, 'v left');
+  after(hold, () => { unsay(el); if (thoughtEl === el) thoughtEl = null; });
 }
 
 // The errand, top-left: the four lost things, each marked missing / carried / home.
@@ -1282,6 +1284,7 @@ function updateValley(dt) {
       wasStill = still;
       sound.ambience({ wind: still ? 0.04 : 0.34, drone: 0, muffle: still });
       if (still && !fired.has('h-first')) { fired.add('h-first'); sound.bowl(784, 0.06); }
+      if (still) onFreeze();
     }
     if (still) holdTotal += dt;
     // held, the view drifts slowly in among the hanging petals; let go, it eases back
@@ -1293,17 +1296,10 @@ function updateValley(dt) {
     if (t > 8.2 && !fired.has('h-first')) once('m3', () => { thought('m3', 3.8); after(1.4, () => { if (!fired.has('h-first')) hint('keep'); }); });
     if (t > 24 && !fired.has('h-first')) once('m3b', () => { thought('m3', 3.8); hint('keep'); });
     if (still && hintKey === 'keep') hint('');
-    // held: it stops; so does she; so would the one she is waiting for
-    if (still && holdTotal > 1.4) once('h1', () => thought('h1', 3.2));
-    if (still && holdTotal > 5.0) once('h2', () => thought('h2', 3.4));
-    if (still && holdTotal > 8.8) once('h3', () => {
-      thought('h3', 3.8);
-      after(4.4, () => { thought('r1', 3.6); if (holding) after(1.2, () => { if (holding) hint('nLet'); }); });
-    });
     if (!still && hintKey === 'nLet') hint('');
-    // once the traveler has seen what holding does (or after a while anyway), the petals fall
+    // once the traveler has stopped it and let go (or after a while anyway), the petals fall
     // again and her grandmother comes into sight down the path
-    if ((fired.has('h2') || t > 36) && !still && !fired.has('elderGo')) {
+    if ((holdTotal > 0.8 || t > 36) && !still && !fired.has('elderGo')) {
       fired.add('elderGo');
       after(1.8, () => { nian.elderComes(1); after(2.2, () => voice(['g9'], GIRL)); });
     }
@@ -1377,6 +1373,25 @@ function startHold() {
   camPos.copy(wantPos); camLook.copy(wantLook);
   after(1.6, () => { if (state === 'nHold') hint('keep'); });
 }
+// Every time the world stops, the traveler notices something: the petals, then 阿念, and once
+// her grandmother is on the path, that she has stopped too, and what that means. Lines not yet
+// seen come first, one after another while the hold lasts; after that the plain fact again.
+let freezeId = 0;
+function onFreeze() {
+  const id = ++freezeId;
+  const elderOn = fired.has('elderGo');
+  const seq = elderOn ? ['h4', 'h3', 'r1'] : ['h1', 'h2'];
+  let list = seq.filter((k) => !fired.has('t-' + k));
+  if (!list.length) list = [seq[0]];
+  const step = (i) => {
+    if (id !== freezeId || !holding || state !== 'nHold') return;
+    if (i >= list.length) { if (elderOn || fired.has('t-h2')) hint('nLet'); return; }
+    fired.add('t-' + list[i]);
+    thought(list[i], 3.4);
+    after(i + 1 < list.length ? 3.6 : 2.6, () => step(i + 1));
+  };
+  after(0.4, () => step(0));
+}
 function holdCamera(t, portrait, push = 0) {
   const tp = nian.treePos;
   const cz = tp.z + (portrait ? 9 : 7.5);
@@ -1434,11 +1449,12 @@ function updateNianEnd(dt, portrait) {
     camPos.copy(wantPos); camLook.copy(wantLook);
     fade(0, false, 1000);
     after(1.4, () => {
+      // thanks first; then a word about the blossom; then a send-off
       const a = voice(['o4'], ELDER);
       after(a + 0.3, () => {
         const b = voice(['o5', 'o6'], ELDER);
-        after(b + 0.2, () => {
-          const c = voice(['o7'], ELDER);
+        after(b + 0.4, () => {
+          const c = voice(['o7', 'o8'], ELDER);
           after(c + 0.6, () => {
             nian.girlMode = 'wave';
             after(3.6, () => { fadeEl.classList.add('pale'); fade(1, false, 4200); sound.musicLevel(0.4, 6); });

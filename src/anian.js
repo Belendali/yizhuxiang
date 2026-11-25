@@ -93,7 +93,7 @@ export class Nian {
     this.rain = null;     // the 3D petals coming off her tree
     this.rainK = 0;       // 0..1: how hard it is falling
     this.rainWind = new THREE.Vector3(0.45, 0, 0.42);
-    this.elderSpeed = 0.24; // path points per second (about 0.3 m/s, matched to her limping stride)
+    this.elderSpeed = 0.32; // path points per second (about 0.42 m/s, matched to her limping stride)
     this.elderLook = null; // who the grandmother turns to once she has stopped
 
     const tx = NIAN.x, tz = NIAN.z, ty = valleyHeight(tx, tz);
@@ -399,7 +399,7 @@ export class Nian {
     const prev = this.elderActs[this.elderClip];
     this.elderClip = name;
     next.reset().setEffectiveWeight(1).play();
-    if (name === 'Injured_Walk') next.timeScale = 0.85; // an old woman's slow, limping step
+    if (name === 'Injured_Walk') next.timeScale = 1.12; // an old woman's slow, limping step
     if (prev && fade > 0) next.crossFadeFrom(prev, fade, false);
     else if (prev) prev.stop();
   }
