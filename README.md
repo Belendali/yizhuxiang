@@ -1,6 +1,6 @@
 # 一炷香 · 序章（雪寺）
 
-A short 3D web prologue: a traveler crosses a snowfield to a mountain temple, finds the things it has lost in the snow, talks with the Buddha, and offers the first stick of incense. Built with Three.js. Most geometry, textures and sound are procedural; the Buddha, the traveler, the paper lanterns, the roof-corner bells, the singing bowl, the path's stone lamps, the snowy pines (and a bare winter tree) around the temple, and the cherry trees of 落花谷 are models in assets/models (each falls back to a procedural stand-in if it fails to load). The trees were scanned at millions of triangles; they are shipped with their texture colours baked into vertex colours and simplified to 15k–250k triangles.
+A short 3D web prologue: a traveler crosses a snowfield to a mountain temple, finds the things it has lost in the snow, talks with the Buddha, and offers the first stick of incense. Built with Three.js. Most geometry, textures and sound are procedural; the Buddha, the traveler, the paper lanterns, the roof-corner bells, the singing bowl, the path's stone lamps, the snowy pines (and a bare winter tree) around the temple, and the cherry trees of 落花谷 are models in assets/models (each falls back to a procedural stand-in if it fails to load). The snow trees were generated at millions of triangles; they are shipped with their texture colours baked into vertex colours and simplified to about 15k triangles. The cherry trees (assets/models/sakura.glb) are a Sketchfab set of three game-ready trees with alpha-tested blossom cards, kept in one file as nodes `big` / `small` / `small2`; the small ones have some blossom cards and bark detail removed so the instanced forest stays light.
 
 ## Run
 
@@ -67,4 +67,10 @@ Spots and dialogue live in `src/main.js` (`spots`, `TALK_FIRST`, `TALK_AFTER`); 
 
 **Test switch:** the first of the three icons in the top-right corner (a path with three stops) opens a list of every world and story point (序章: 标题, 开场, 风雪, 台阶, 殿门, 进殿, 殿内, 上香, 对话一, 修庙, 归位, 对话二, 入夜; 第一章: 醒来, 漫步). Picking one reloads the page straight into that point (`?at=talk2`, etc.). Chapters not built yet are listed in grey.
 
+**Deploying:** bump `window.__V` near the top of `index.html` before each push. Every script and model URL carries it (`?v=…`), so browsers load the new version instead of a cached mix of old and new files.
+
 In the browser console, `__game.jump('intro' | 'trudge' | 'stairs' | 'door' | 'inside' | 'walkin' | 'talk1' (incense offered, the first talk begins) | 'errand' (just out of the hall, things glowing) | 'repaired' | 'talk2' | 'night' | 'valley' | 'valleyWalk' | 'altar' | 'ending')` jumps to a state, and `__game.advance(seconds, holding)` fast-forwards the simulation. `__game.put(x, z)` moves the traveler outside, `__game.answer('a1a' | 'a1b' | 'sil')` answers the Buddha, and `__game.quest` is the repair quest.
+
+## Credits
+
+- "Cherry Blossom Trees" by [Jagobo](https://sketchfab.com/Jagobo), [Sketchfab](https://sketchfab.com/3d-models/cherry-blossom-trees-f69be55d2e4f4f73b568ebb185bd8496), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/). Split into three trees, blossom cards thinned on the small ones, textures resized.

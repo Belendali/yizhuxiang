@@ -24,10 +24,11 @@ function load(url) {
  * @param opts   height | width: target size in metres (one of them)
  *               anchor: 'top' (hangs from the origin), 'bottom' (stands on it) or 'center'
  *               own: give this clone its own materials (so it can glow on its own)
+ *               part: name of one top-level node, for files that hold a set (sakura: big / small / small2)
  */
-export function propModel(name, { height, width, anchor = 'center', own = false } = {}) {
-  return load(`./assets/models/${name}.glb`).then((src) => {
-    const model = src.clone(true);
+export function propModel(name, { height, width, anchor = 'center', own = false, part } = {}) {
+  return load(`./assets/models/${name}.glb?v=${window.__V || ''}`).then((src) => {
+    const model = (part ? src.getObjectByName(part) : src).clone(true);
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
     const s = height ? height / size.y : width / Math.max(size.x, size.z);

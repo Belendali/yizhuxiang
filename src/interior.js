@@ -410,7 +410,7 @@ export function buildInterior(renderer) {
   // ---------- Sculpted Buddha (assets/models/buddha.glb) ----------
   // Replaces the procedural figure once loaded. STATUE tunes the fit on the dais.
   // tint: multiplies the texture (warm aged ivory so it sits in the candlelit room)
-  const STATUE = { url: './assets/models/buddha.glb', height: 1.0, turn: 0, tint: 0xe2d6c2, roughness: 0.7, env: 0.5 };
+  const STATUE = { url: `./assets/models/buddha.glb?v=${window.__V || ''}`, height: 1.0, turn: 0, tint: 0xe2d6c2, roughness: 0.7, env: 0.5 };
   new GLTFLoader().load(STATUE.url, (gltf) => {
     const model = gltf.scene;
     model.rotation.y = STATUE.turn;

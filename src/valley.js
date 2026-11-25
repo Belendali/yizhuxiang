@@ -153,20 +153,20 @@ export function buildValley() {
   blossom.receiveShadow = true;
   scene.add(blossom);
 
-  // The sculpted cherry trees take over once they load: the wide old one for the hero,
-  // two lighter kinds (alternating) for the rest. The turned stand-ins above stay until then.
+  // The cherry models (sakura.glb: big / small / small2) take over once they load: the big
+  // leaning one for the hero, the two small ones (alternating) for the rest. The turned stand-ins above stay until then.
   const others = trees.slice(1);
   const kinds = [
-    { name: 'cherry-s', height: 3.5, list: others.filter((_, i) => i % 2 === 0) },
-    { name: 'cherry-bloom-s', height: 4.3, list: others.filter((_, i) => i % 2 === 1) },
+    { part: 'small', height: 3.9, list: others.filter((_, i) => i % 2 === 0) },
+    { part: 'small2', height: 4.3, list: others.filter((_, i) => i % 2 === 1) },
   ];
   Promise.all([
-    propModel('cherry', { height: 6.6, anchor: 'bottom' }).then((m) => {
+    propModel('sakura', { part: 'big', height: 6.6, anchor: 'bottom' }).then((m) => {
       m.position.set(HERO.x, valleyHeight(HERO.x, HERO.z) - 0.08, HERO.z);
       m.rotation.y = 2.2;
       scene.add(m);
     }),
-    ...kinds.map((k) => propParts(k.name, { height: k.height, anchor: 'bottom' }).then((parts) => {
+    ...kinds.map((k) => propParts('sakura', { part: k.part, height: k.height, anchor: 'bottom' }).then((parts) => {
       const tm = new THREE.Matrix4(), tq = new THREE.Quaternion(), tv = new THREE.Vector3(), ts = new THREE.Vector3();
       for (const p of parts) {
         const inst = new THREE.InstancedMesh(p.geometry, p.material, k.list.length);
@@ -184,7 +184,7 @@ export function buildValley() {
     woodMesh.visible = false; blossom.visible = false;
     // a touch of warm self-light, like the old blossom had, so the crowns read pink in the shade
     scene.traverse((o) => {
-      if (!o.isMesh || !o.material.vertexColors || o.material.userData.lit) return;
+      if (!o.isMesh || o.material.name !== 'foliage' || o.material.userData.lit) return;
       o.material.userData.lit = true;
       o.material.emissive = new THREE.Color(0x3a2228);
     });

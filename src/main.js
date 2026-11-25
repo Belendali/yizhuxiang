@@ -33,7 +33,7 @@ const inside = buildInterior(renderer);
 
 // The traveler: one rigged character, two instances (outside / inside).
 // Falls back to the procedural traveler if the model can't load.
-const [walker, walkerIn] = await createActors('./assets/models/traveler.glb', 2, [{ snowy: true }, { snowy: false }]);
+const [walker, walkerIn] = await createActors(`./assets/models/traveler.glb?v=${window.__V || ''}`, 2, [{ snowy: true }, { snowy: false }]);
 outside.scene.add(walker.group);
 walkerIn.staff.visible = false; // left at the door
 inside.scene.add(walkerIn.group);
