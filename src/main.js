@@ -163,9 +163,14 @@ function voice(keys, { gap = 1.6, hold = 3.4, cls = 'voice' } = {}) {
   voiceEls = [];
   const n = keys.length;
   const mine = voiceEls;
+  // 阿念's words stand at her right, her grandmother's at her left
+  voiceAnchor = / girl/.test(cls) ? { who: 'girl', side: 1, h: 1.2 } : / elder/.test(cls) ? { who: 'elder', side: -1, h: 1.45 } : null;
   keys.forEach((k, i) => after(i * gap, () => {
     if (mine !== voiceEls) return;
-    voiceEls.push(say(k, cls, { '--x': `${((n - 1) / 2 - i) * 2.1}em`, '--y': `${i * 1.5}em` }));
+    const el = say(k, cls, { '--x': `${((n - 1) / 2 - i) * 2.1}em`, '--y': `${i * 1.5}em` });
+    el._i = i; el._n = n;
+    voiceEls.push(el);
+    placeVoices();
   }));
   const total = (n - 1) * gap + hold + 1.4;
   voiceUntil = clockNow + total;
@@ -173,6 +178,43 @@ function voice(keys, { gap = 1.6, hold = 3.4, cls = 'voice' } = {}) {
   return total;
 }
 const voicing = () => clockNow < voiceUntil;
+// Pin the spoken lines beside whoever is speaking, a little to their side on screen and starting
+// about at head height. Off screen (or no speaker), they fall back to their usual place.
+let voiceAnchor = null;
+const vaP = new THREE.Vector3(), vaS = new THREE.Vector3();
+function placeVoices() {
+  if (!voiceEls.length) return;
+  const o = voiceAnchor && nian && nian[voiceAnchor.who];
+  let ok = !!(o && o.visible && activeScene === 'valley');
+  if (ok) {
+    o.getWorldPosition(vaP); vaP.y += voiceAnchor.h;
+    vaS.setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(voiceAnchor.side * 0.3);
+    vaP.add(vaS).project(camera);
+    ok = vaP.z < 1 && Math.abs(vaP.x) < 1.05 && Math.abs(vaP.y) < 1.1;
+  }
+  const W = innerWidth, H = innerHeight, en = document.documentElement.lang === 'en';
+  const ax = (vaP.x + 1) / 2 * W, ay = (1 - vaP.y) / 2 * H, side = voiceAnchor ? voiceAnchor.side : 1;
+  // the columns share one top line, so the longest one decides how high they start
+  let tall = 0;
+  if (ok && !en) for (const el of voiceEls) tall = Math.max(tall, el.offsetHeight);
+  const top = Math.max(H * 0.05, Math.min(H * 0.84 - tall, ay - tall * 0.12));
+  for (const el of voiceEls) {
+    if (!ok) { el.style.left = el.style.top = el.style.transform = ''; continue; }
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let x, y;
+    if (en) {
+      x = side > 0 ? ax : ax - w;
+      y = ay - h * 0.5 + el._i * h * 0.9;
+    } else {
+      // vertical columns read right to left: the first line is the rightmost one
+      x = side > 0 ? ax + (el._n - 1 - el._i) * w * 0.82 : ax - (el._i + 1) * w * 0.82;
+      y = top;
+    }
+    x = Math.max(8, Math.min(W - w - 8, x));
+    if (en) y = Math.max(H * 0.05, Math.min(H * 0.84 - h, y));
+    el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.transform = 'none';
+  }
+}
 // A passing thought of the traveler's, in the left column.
 function thought(key, hold = 4) {
   const el = say(key, 'v left');
@@ -1509,6 +1551,7 @@ function tick(dt) {
   fovMul = damp(fovMul, fovWant, 1.6, dt);
   if (Math.abs(camera.fov - baseFov * fovMul) > 0.01) { camera.fov = baseFov * fovMul; camera.updateProjectionMatrix(); }
   camera.updateMatrixWorld();
+  placeVoices();
 
   if (activeScene === 'valley') {
     // the traveler is hidden while the view is behind their eyes

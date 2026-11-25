@@ -93,7 +93,7 @@ export class Nian {
     this.rain = null;     // the 3D petals coming off her tree
     this.rainK = 0;       // 0..1: how hard it is falling
     this.rainWind = new THREE.Vector3(0.45, 0, 0.42);
-    this.elderSpeed = 0.34; // path points per second
+    this.elderSpeed = 0.24; // path points per second (about 0.3 m/s, matched to her limping stride)
     this.elderLook = null; // who the grandmother turns to once she has stopped
 
     const tx = NIAN.x, tz = NIAN.z, ty = valleyHeight(tx, tz);
@@ -185,7 +185,7 @@ export class Nian {
     this.elder.add(stick);
     this.elder.visible = false;
     this.scene.add(this.elder);
-    // her model (assets/models/elder.glb, Meshy + Mixamo: Walking, Idle_4) replaces the stand-in
+    // her model (assets/models/elder.glb, Meshy + Mixamo: Injured_Walk, Idle_4) replaces the stand-in
     this.elderMixer = null;
     this.elderActs = {};
     this.elderClip = null;
@@ -399,7 +399,7 @@ export class Nian {
     const prev = this.elderActs[this.elderClip];
     this.elderClip = name;
     next.reset().setEffectiveWeight(1).play();
-    if (name === 'Walking') next.timeScale = 0.45; // an old woman's unhurried step
+    if (name === 'Injured_Walk') next.timeScale = 0.85; // an old woman's slow, limping step
     if (prev && fade > 0) next.crossFadeFrom(prev, fade, false);
     else if (prev) prev.stop();
   }
@@ -578,7 +578,7 @@ export class Nian {
       if (this.elderLook || Math.hypot(gp.x - e.x, gp.z - e.z) < 4) this.elder.rotation.y = angleDamp(this.elder.rotation.y, yawTo(e.x, e.z, gp.x, gp.z), 3, dt);
     }
     if (this.elderMixer && this.elder.visible) {
-      this._elderPlay(this.elderWalking ? 'Walking' : 'Idle_4');
+      this._elderPlay(this.elderWalking ? 'Injured_Walk' : 'Idle_4');
       this.elderMixer.update(dt);
     }
   }
