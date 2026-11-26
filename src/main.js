@@ -169,6 +169,7 @@ function voice(keys, { gap = 1.6, hold = 3.4, cls = 'voice' } = {}) {
     if (mine !== voiceEls) return;
     const el = say(k, cls, { '--x': `${((n - 1) / 2 - i) * 2.1}em`, '--y': `${i * 1.5}em` });
     el._i = i; el._n = n;
+    if (voiceAnchor) el.style.transform = 'none'; // set before it is measured, so it never slides into place
     voiceEls.push(el);
     placeVoices();
   }));
@@ -508,6 +509,8 @@ const INTRO_LOOK = [
   [11.4, 0, 1.9, 0],
 ];
 const INTRO_FOV = [[0, 1], [3.0, 0.9], [5.6, 0.7], [7.2, 0.8], [9.0, 0.85], [11.4, 1]];
+// played a quarter faster than authored (playtesters found the walk-up too slow)
+for (const k of [...INTRO_KEYS, ...INTRO_LOOK, ...INTRO_FOV]) k[0] *= 0.75;
 
 /** A point one metre along yaw/pitch from `from` (yaw 0 looks toward -Z, positive turns left). */
 function aim(out, from, yaw, pitch) {
@@ -723,9 +726,9 @@ function updateOutside(dt) {
     fovWant = splinePoint(v3, INTRO_FOV, t).x;
     camLag = 0.12;
     walker.lean = 0;
-    if (t > 7.6) once('introLine', () => (lines.l1 = say('l1', 'v')));
+    if (t > 5.7) once('introLine', () => (lines.l1 = say('l1', 'v')));
     const { f, s } = moveInput();
-    const skip = t > 2.0 && (f !== 0 || s !== 0);
+    const skip = t > 1.2 && (f !== 0 || s !== 0);
     takeTap();
     if (t >= lastT || skip) {
       document.body.classList.remove('cine');
@@ -741,7 +744,7 @@ function updateOutside(dt) {
     walker.lean = 0.25 + tired * 0.55;
     // a steadier pace on the stairs, so the stride can find each tread
     const onStairs = Math.abs(P.x) < 2.4 && P.z < L.stairBottomZ + 0.4 && P.z > L.stairTopZ - 0.2;
-    const sp = stepBody(P, dt, { canStand: canStandOut, speed: lerp(1.4, 1.1, tired) * (onStairs ? 0.9 : 1), runMul: onStairs ? 1.25 : lerp(1.7, 1.3, tired) });
+    const sp = stepBody(P, dt, { canStand: canStandOut, speed: lerp(1.9, 1.5, tired) * (onStairs ? 0.9 : 1), runMul: onStairs ? 1.25 : lerp(1.8, 1.4, tired) });
     placeWalkerOut(dt);
     if (Math.abs(tired - windTired) > 0.04) { windTired = tired; sound.ambience({ wind: 0.55 + tired * 0.35 }); }
     const foot = walker.consumeStep();
@@ -1476,10 +1479,11 @@ let closeShot = false;
 // Over the traveler's shoulder: the grandmother's face, 阿念 at her side.
 const closeU = new THREE.Vector3(), closeS = new THREE.Vector3();
 function closeCamera(portrait) {
-  const e = nian.elder.position, back = portrait ? 1.9 : 1.25;
+  const e = nian.elder.position, back = portrait ? 2.7 : 1.25;
   const cx = P.x + closeS.x * back + closeU.x * 0.5, cz = P.z + closeS.z * back + closeU.z * 0.5;
   wantPos.set(cx, valleyHeight(P.x, P.z) + 1.62, cz);
-  const lx = e.x + closeU.x * 0.45, lz = e.z + closeU.z * 0.45;
+  const lk = portrait ? 0.2 : 0.45; // on a phone the grandmother nearer the middle, room for her words at her left
+  const lx = e.x + closeU.x * lk, lz = e.z + closeU.z * lk;
   wantLook.set(lx, valleyHeight(e.x, e.z) + 1.2, lz);
   camLag = 0.9;
 }
