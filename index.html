@@ -68,6 +68,8 @@
   /* 阿念 and her grandmother speak in the same columns, in their own ink */
   body.out .line.voice.girl { color: #8c3446; font-size: clamp(19px, 4.8vmin, 28px); }
   body.out .line.voice.elder { color: #4a3d30; }
+  body.out .line.voice.kid { color: #2f5560; font-size: clamp(19px, 4.8vmin, 28px); }
+  body.out .line.voice.self { color: #3a2a1e; }
   body.out .line.voice { color: #2a2016; background: radial-gradient(closest-side, rgba(236, 240, 238, 0.55), rgba(236, 240, 238, 0)); }
   body:not(.out) .line.voice.sutra { top: 14%; font-size: clamp(26px, 7vmin, 44px); letter-spacing: 0.4em; color: #ffe2b0; }
   html:lang(ja) .line.voice { font-family: "Noto Serif JP", serif; font-weight: 600; font-size: clamp(19px, 4.8vmin, 28px); }
@@ -308,7 +310,7 @@
 <script>
   // Version stamp: bump on every deploy so browsers fetch the new scripts and models
   // instead of a cached mix of old and new files.
-  window.__V = '2026-11-25z5';
+  window.__V = '2026-11-25z6';
   (function () {
     const mods = ['main', 'exterior', 'interior', 'actor', 'traveler', 'fx', 'audio', 'repair', 'valley', 'i18n', 'models', 'materials', 'temple-detail', 'anian'];
     const imports = {

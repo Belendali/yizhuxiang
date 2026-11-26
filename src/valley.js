@@ -20,6 +20,9 @@ export const SPRIGS = [[-6.5, 3.5], [5.5, -6], [9.5, 2.5], [-2.5, -12.5], [12, -
 export function valleyPathX(z) {
   return Math.sin(z * 0.045) * 3.2 + Math.sin(z * 0.11) * 0.8;
 }
+// further on, a patch of sand beside the path where a child draws (its story lives in sand.js)
+export const SAND_AT = { x: valleyPathX(-56) + 3.5, z: -56 };
+const nearSand = (x, z, r) => Math.hypot(x - SAND_AT.x, z - SAND_AT.z) < r;
 
 export function valleyHeight(x, z) {
   let h = (noise.fbm(x * 0.035 + 3, z * 0.035) - 0.5) * 3.2 + (noise.fbm(x * 0.2, z * 0.2 + 5) - 0.5) * 0.3;
@@ -186,6 +189,7 @@ export function buildValley() {
     if (Math.hypot(x - VALLEY_START.x, z - VALLEY_START.z) < 4) continue;
     if (trees.some((t) => Math.hypot(t.x - x, t.z - z) < 3.4)) continue;
     if (Math.hypot(x - NIAN.x, z - NIAN.z) < 5.5) continue;
+    if (nearSand(x, z, 5.5)) { r(); continue; } // (the draw it would have used, so the rest keeps its layout)
     trees.push({ x, z, s: 0.8 + r() * 0.6 });
   }
   const woodParts = [];
@@ -307,6 +311,7 @@ export function buildValley() {
     const s = 0.25 + r() * 0.6;
     r(); const yaw = r() * 6.28; r(); // (three draws, as before, so the rest of the valley keeps its layout)
     if (Math.hypot(x - NIAN.x, z - NIAN.z) < 3) continue;
+    if (nearSand(x, z, 3.8)) continue;
     rq.setFromAxisAngle(rs.set(0, 1, 0), yaw);
     rm.compose(rp.set(x, valleyHeight(x, z) - s * 0.08, z), rq, rs.setScalar(s * 1.7));
     rocks.setMatrixAt(ri++, rm);
@@ -334,6 +339,7 @@ export function buildValley() {
         const x = valleyPathX(z) + (gr() > 0.5 ? 1 : -1) * (1.3 + gr() * 15);
         if (clear.some(([cx, cz]) => Math.hypot(x - cx, z - cz) < 1.4)) continue;
         if (Math.hypot(x - NIAN.x, z - NIAN.z) < 1.2) continue;
+        if (nearSand(x, z, 3.2)) { gr(); gr(); continue; }
         const sc = 0.75 + gr() * 0.6;
         m4.compose(p4.set(x, valleyHeight(x, z) - 0.02, z), q4.setFromAxisAngle(up, gr() * 6.28), s4.setScalar(sc));
         mats.push(m4.clone());

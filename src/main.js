@@ -12,6 +12,7 @@ import { Sound } from './audio.js';
 import { RepairQuest } from './repair.js';
 import { buildValley, valleyHeight, valleyBlocked, valleyPathX, VALLEY_START } from './valley.js';
 import { Nian } from './anian.js';
+import { Sand, SAND, SAND_SPOT, KID_SPOT } from './sand.js';
 import { LANGS, t, getLang, setLang, onLang } from './i18n.js';
 
 // ---------------------------------------------------------------- renderer
@@ -164,7 +165,10 @@ function voice(keys, { gap = 1.6, hold = 3.4, cls = 'voice' } = {}) {
   const n = keys.length;
   const mine = voiceEls;
   // 阿念's words stand at her right, her grandmother's at her left
-  voiceAnchor = / girl/.test(cls) ? { who: 'girl', side: 1, h: 1.2 } : / elder/.test(cls) ? { who: 'elder', side: -1, h: 1.45 } : null;
+  voiceAnchor = / girl/.test(cls) ? { obj: () => nian && nian.girl, side: 1, h: 1.2 }
+    : / elder/.test(cls) ? { obj: () => nian && nian.elder, side: -1, h: 1.45 }
+    : / kid/.test(cls) ? { obj: () => sand && sand.kid, side: 1, h: 0.85 }
+    : / self/.test(cls) ? { obj: () => walker.group, side: -1, h: 1.75 } : null;
   keys.forEach((k, i) => after(i * gap, () => {
     if (mine !== voiceEls) return;
     const el = say(k, cls, { '--x': `${((n - 1) / 2 - i) * 2.1}em`, '--y': `${i * 1.5}em` });
@@ -185,7 +189,7 @@ let voiceAnchor = null;
 const vaP = new THREE.Vector3(), vaS = new THREE.Vector3();
 function placeVoices() {
   if (!voiceEls.length) return;
-  const o = voiceAnchor && nian && nian[voiceAnchor.who];
+  const o = voiceAnchor && voiceAnchor.obj();
   let ok = !!(o && o.visible && activeScene === 'valley');
   if (ok) {
     o.getWorldPosition(vaP); vaP.y += voiceAnchor.h;
@@ -365,9 +369,9 @@ let pointerDown = false;
 let lastPX = 0, lastPY = 0;
 const canvas = renderer.domElement;
 const locked = () => document.pointerLockElement === canvas;
-const FREE_STATES = new Set(['walk', 'inWalk', 'valley']);
+const FREE_STATES = new Set(['walk', 'inWalk', 'valley', 'valley2']);
 // Directed shots: the mouse/touch neither turns the camera nor skips them.
-const AUTO_SHOTS = new Set(['intro', 'inLook', 'opening', 'leaving', 'rest', 'sleep', 'wake', 'vLook', 'nTalk', 'nEnd']);
+const AUTO_SHOTS = new Set(['intro', 'inLook', 'opening', 'leaving', 'rest', 'sleep', 'wake', 'vLook', 'nTalk', 'nEnd', 'sTalk', 'sWind', 'sLeave']);
 
 function lookBy(dx, dy) {
   if (!FREE_STATES.has(state)) return;
@@ -375,6 +379,11 @@ function lookBy(dx, dy) {
   camPitch = THREE.MathUtils.clamp(camPitch + dy * 0.0024, -0.05, 0.9);
 }
 
+// where the pointer is, in normalized device coordinates (for drawing on the sand)
+const ptr = { x: 0, y: -0.3, seen: false };
+const trackPtr = (e) => { ptr.x = (e.clientX / innerWidth) * 2 - 1; ptr.y = -(e.clientY / innerHeight) * 2 + 1; ptr.seen = true; };
+window.addEventListener('pointerdown', trackPtr, true);
+window.addEventListener('pointermove', trackPtr, true);
 window.addEventListener('pointerdown', (e) => {
   if (AUTO_SHOTS.has(state)) return;
   holding = true; tapQueued = true; pointerDown = true;
@@ -1186,7 +1195,7 @@ function updateInside(dt) {
 }
 
 // ---------------------------------------------------------------- 第一章 · 落花谷
-let valley = null;
+let valley = null, sand = null;
 let nian = null;
 const canStandValley = (x, z, b) => !valleyBlocked(x, z, valley.colliders) && Math.abs(valleyHeight(x, z) - valleyHeight(b.x, b.z)) < 0.6;
 const wakeFrom = new THREE.Vector3(), wakeLook = new THREE.Vector3();
@@ -1195,6 +1204,8 @@ function goValley() {
   if (!valley) {
     valley = buildValley();
     nian = new Nian(valley, sound);
+    sand = new Sand(valley.scene);
+    valley.colliders.push(...sand.colliders);
     renderer.compile(valley.scene, camera);
   }
   valley.scene.add(walker.group);
@@ -1258,7 +1269,7 @@ function updateValley(dt) {
     }
   }
 
-  if (state === 'valley') {
+  if (state === 'valley' || state === 'valley2') {
     const sp = stepBody(P, dt, { canStand: canStandValley, speed: 2.0, runMul: 2.1 });
     placeWalkerOut(dt);
     if (walker.consumeStep() && sp > 0.2) sound.step(true);
@@ -1267,12 +1278,21 @@ function updateValley(dt) {
     wantPos.y = Math.max(wantPos.y, valleyHeight(wantPos.x, wantPos.z) + 0.5);
     camLag = lerp(0.6, 0.18, ss(stateTime, 0, 2));
     takeTap();
-    // down the path, someone sitting under a tree: 那里好像有个人, 去看看好了
-    const g = nian.girl.position;
-    const gd = Math.hypot(P.x - g.x, P.z - g.z);
-    if (gd < 21 && stateTime > 1.5 && !voicing()) once('v-see', () => { thought('s1', 3.0); after(3.4, () => thought('s2', 3.0)); });
-    if (gd < 3.0) startNianTalk();
+    if (state === 'valley') {
+      // down the path, someone sitting under a tree: 那里好像有个人, 去看看好了
+      const g = nian.girl.position;
+      const gd = Math.hypot(P.x - g.x, P.z - g.z);
+      if (gd < 21 && stateTime > 1.5 && !voicing()) once('v-see', () => { thought('s1', 3.0); after(3.4, () => thought('s2', 3.0)); });
+      if (gd < 3.0) startNianTalk();
+    } else {
+      // further on, a child drawing in the sand beside the path: 有人在画画
+      const kd = Math.hypot(P.x - KID_SPOT.x, P.z - KID_SPOT.z);
+      if (kd < 15 && !voicing()) once('sd-see', () => thought('sd1', 3.2));
+      if (Math.hypot(P.x - SAND.x, P.z - SAND.z) < 4.4 || kd < 2.4) startSandTalk();
+    }
   }
+  if (sand) sand.update(dt * flow);
+  updateSand(dt, portrait);
 
   // Keeping the blossom: holding stops the world (the petals hang in the air), but 阿念 and
   // her grandmother on the path stop with it. Only letting go brings the grandmother.
@@ -1339,6 +1359,8 @@ function updateValley(dt) {
 }
 
 const GIRL = { cls: 'voice girl', gap: 1.7, hold: 3.2 };
+const KID = { cls: 'voice kid', gap: 1.7, hold: 3.2 };
+const SELF = { cls: 'voice self', gap: 1.9, hold: 3.4 };
 const ELDER = { cls: 'voice elder', gap: 1.9, hold: 3.6 };
 function startNianTalk() {
   if (fired.has('nTalk')) return;
@@ -1460,8 +1482,104 @@ function updateNianEnd(dt, portrait) {
           const c = voice(['o7', 'o8'], ELDER);
           after(c + 0.6, () => {
             nian.girlMode = 'wave';
-            after(3.6, () => { fadeEl.classList.add('pale'); fade(1, false, 4200); sound.musicLevel(0.4, 6); });
-            after(8.6, () => {
+            after(3.4, walkOn);
+          });
+        });
+      });
+    });
+  });
+  if (closeShot) closeCamera(portrait);
+  if (nian.girlMode === 'run') nian.runTo = nian.elderPos;
+}
+let closeShot = false;
+// ---------------------------------------------------------------- 沙上画
+// After 阿念's story the traveler walks on. Further down the path a child sits drawing in a
+// patch of sand; they hand the traveler a brush. The traveler draws whatever they like, and
+// when it is done the wind lifts the sand and takes the drawing away (风太大了 / 留不下呢).
+// The child laughs (你的画 / 随风去旅游了) and starts another; the traveler smiles, lets it
+// go (是啊 / 随它去吧) and goes on.
+function walkOn() {
+  closeShot = false;
+  nian.elderLook = null;
+  setState('valley2');
+  after(7, () => { if (state === 'valley2' && Math.hypot(P.vx, P.vz) < 0.2) hint('move'); });
+}
+const sandH = (x, z) => valleyHeight(x, z);
+// both of them on the sand's edges, from beside it (the traveler at the near edge, the child across)
+function sandTwoShot(portrait) {
+  // over the traveler's shoulder, across the sand to the child
+  const h = sandH(SAND_SPOT.x, SAND_SPOT.z);
+  const k = portrait ? 1.7 : 1;
+  wantPos.set(SAND_SPOT.x + 0.95 * k, h + 1.6 + 0.35 * (k - 1), SAND_SPOT.z + 2.4 * k);
+  wantLook.set(KID_SPOT.x - 0.9, sandH(KID_SPOT.x, KID_SPOT.z) + 0.4, KID_SPOT.z + 1.7);
+}
+let sandAsk = false, sandIdle = 0, sandDrawT = 0, sandShown = false;
+function startSandTalk() {
+  if (state !== 'valley2') return;
+  hint(''); setState('sTalk');
+  sandAsk = false;
+  after(1.6, () => {
+    const a = voice(['k1', 'k2'], KID);
+    after(a - 0.6, () => ask(['take'], startDraw, { quiet: false, wait: 10 }));
+  });
+}
+function startDraw() {
+  hint('');
+  if (locked()) document.exitPointerLock();
+  fade(1, false, 350);
+  after(0.4, () => {
+    setState('sDraw');
+    sandShown = false;
+    sand.brush.visible = true;
+    sandIdle = 0; sandDrawT = 0; sandAsk = false;
+    sandCamera(camera.aspect < 0.8);
+    camPos.copy(wantPos); camLook.copy(wantLook);
+    fade(0, false, 700);
+    sand.kidBegins();
+    after(1.0, () => thought('sd2', 3.2));
+    after(2.4, () => { if (state === 'sDraw' && sand.ink < 40) hint('draw'); });
+  });
+}
+// kneeling at the near edge, looking down at the sand
+function sandCamera(portrait) {
+  const h = sandH(SAND_SPOT.x, SAND_SPOT.z);
+  wantPos.set(SAND_SPOT.x, h + (portrait ? 2.0 : 1.2), SAND_SPOT.z + (portrait ? 0.9 : 0.3));
+  wantLook.set(SAND.x - 0.15, sandH(SAND.x, SAND.z), SAND.z + (portrait ? 0.15 : 0.3));
+  camLag = 0.25;
+}
+function startWind() {
+  hint('');
+  sandAsk = false;
+  setState('sWind');
+  sand.blow();
+  sand.brush.visible = false;
+  sound.ambience({ wind: 0.85, drone: 0, muffle: false });
+  valley.petals.uniforms.uWind.value.set(3.4, 0, 0.5);
+  after(1.0, () => thought('sw1', 2.8));
+  after(3.6, () => thought('sw2', 3.0));
+  after(6.6, () => fade(1, false, 600));
+  after(7.3, () => {
+    sand.brush.visible = false;
+    sand.calm();
+    sandShown = true;
+    P.x = SAND_SPOT.x; P.z = SAND_SPOT.z; P.vx = P.vz = 0; P.yaw = 0;
+    bodyY = null; placeWalkerOut();
+    sandTwoShot(camera.aspect < 0.8);
+    camPos.copy(wantPos); camLook.copy(wantLook);
+    sound.ambience({ wind: 0.18, drone: 0, muffle: false });
+    valley.petals.uniforms.uWind.value.set(0.55, 0, 0.3);
+    fade(0, false, 900);
+    after(1.2, () => {
+      const a = voice(['k3', 'k4'], KID);
+      after(a - 0.4, () => {
+        sound.bowl(1318, 0.035); // the child's laugh, as a small bright chime
+        sand.kidBegins();
+        after(2.6, () => {
+          const b = voice(['t1', 't2'], SELF);
+          after(b + 0.2, () => {
+            setState('sLeave');
+            after(4.2, () => { fadeEl.classList.add('pale'); fade(1, false, 4200); sound.musicLevel(0.4, 6); });
+            after(9.2, () => {
               titleMain = 'ch1Title'; titleSub = 'ch1End'; renderTitle();
               document.body.classList.add('ended');
               titleEl.classList.add('show');
@@ -1472,10 +1590,65 @@ function updateNianEnd(dt, portrait) {
       });
     });
   });
-  if (closeShot) closeCamera(portrait);
-  if (nian.girlMode === 'run') nian.runTo = nian.elderPos;
 }
-let closeShot = false;
+function updateSand(dt, portrait) {
+  if (state === 'sTalk') {
+    takeTap();
+    // step over to the near edge of the sand, then face it
+    const dx = SAND_SPOT.x - P.x, dz = SAND_SPOT.z - P.z, d = Math.hypot(dx, dz);
+    if (d > 0.08) {
+      const v = Math.min(1.4, d * 2.5);
+      P.vx = dx / d * v; P.vz = dz / d * v;
+      P.x += P.vx * dt; P.z += P.vz * dt;
+      P.yaw = angleLerp(P.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 6));
+    } else {
+      P.vx = P.vz = 0;
+      P.yaw = angleLerp(P.yaw, Math.atan2(-(KID_SPOT.x - P.x), -(KID_SPOT.z - P.z)), Math.min(1, dt * 3));
+    }
+    placeWalkerOut(dt);
+    sandTwoShot(portrait);
+    camLag = 0.9;
+  }
+  if (state === 'sDraw') {
+    takeTap();
+    sandCamera(portrait);
+    sandDrawT += dt;
+    const p = ptr.seen ? sand.pick(ptr.x, ptr.y, camera) : null;
+    const down = pointerDown && !!p;
+    sand.drawTo(p, down);
+    if (p) {
+      sand.brush.position.copy(p.point);
+      sand.brush.position.y += down ? 0 : 0.05;
+      sand.brush.rotation.set(-0.42, 0, 0.12);
+      sand.brush.visible = isMobile ? down || sand.ink > 0 : true;
+    }
+    if (down) { sandIdle = 0; if (hintKey === 'draw' && sand.ink > 120) hint(''); } else sandIdle += dt;
+    // once something is drawn and the brush has rested a moment: 画好了
+    if (!sandAsk && sand.ink > 300 && sandIdle > 1.4) {
+      sandAsk = true;
+      ask(['done'], startWind, { quiet: false, wait: Math.max(12, 90 - sandDrawT) });
+    }
+    if (sandDrawT > 120 && !sandAsk) { sandAsk = true; startWind(); }
+  }
+  if (state === 'sWind') {
+    takeTap();
+    if (sandShown) { sandTwoShot(portrait); camLag = 1.2; } else sandCamera(portrait);
+  }
+  if (state === 'sLeave') {
+    takeTap();
+    // back onto the path and on down it, unhurried
+    const tz = P.z - 3, tx = valleyPathX(tz);
+    const dx = tx - P.x, dz = tz - P.z, d = Math.hypot(dx, dz) || 1;
+    const v = Math.min(1.5, stateTime * 0.8);
+    P.vx = dx / d * v; P.vz = dz / d * v;
+    P.x += P.vx * dt; P.z += P.vz * dt;
+    P.yaw = angleLerp(P.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 3));
+    placeWalkerOut(dt);
+    sandTwoShot(portrait);
+    wantLook.lerp(tmp.set(P.x, P.y + 1.2, P.z), 0.35 * ss(stateTime, 0, 4));
+    camLag = 1.4;
+  }
+}
 // Over the traveler's shoulder: the grandmother's face, 阿念 at her side.
 const closeU = new THREE.Vector3(), closeS = new THREE.Vector3();
 function closeCamera(portrait) {
@@ -1576,7 +1749,7 @@ function tick(dt) {
   if (activeScene === 'valley') {
     // the traveler is hidden while the view is behind their eyes
     v3.set(P.x, P.y + EYE_Y, P.z);
-    walker.group.visible = camera.position.distanceTo(v3) > 0.75;
+    walker.group.visible = camera.position.distanceTo(v3) > 0.75 && state !== 'sDraw' && !(state === 'sWind' && !sandShown);
   }
   if (activeScene === 'in') {
     updateStick(dt);
@@ -1635,6 +1808,12 @@ window.__game = {
     if (target === 'talk') { enterInside(); document.body.classList.remove('cine'); PI_.x = 0; PI_.z = INSIDE.stopZ + 0.3; PI_.yaw = 0; camPos.copy(EYE_ALTAR); setState('take'); }
     if (target === 'valley') { fade(1, false, 10); goValley(); }
     if (target === 'valleyWalk') { fade(1, false, 10); goValley(); fired.add('vl-w1'); fired.add('vl-w2'); stateTime = 18.3; }
+    if (target === 'sand' || target === 'sandDraw') {
+      fade(1, false, 10); goValley(); fade(0, false, 600);
+      fired.add('vl-w1'); fired.add('vl-w2');
+      const z = SAND.z + 10; P.x = valleyPathX(z); P.z = z; P.yaw = 0; placeWalkerOut(); setState('valley2');
+      if (target === 'sandDraw') { P.x = SAND_SPOT.x; P.z = SAND_SPOT.z; placeWalkerOut(); setState('sTalk'); fired.add('sd-see'); startDraw(); }
+    }
     if (target === 'nian') {
       fade(1, false, 10); goValley(); fade(0, false, 600);
       const g = nian.girl.position; P.x = g.x - 1.5; P.z = g.z + 6; P.yaw = 0; placeWalkerOut(); setState('valley');
@@ -1685,7 +1864,7 @@ const TEST_WORLDS = [
     ['inside', '进殿'], ['walkin', '殿内'], ['altar', '上香'], ['talk1', '对话一'],
     ['errand', '修庙'], ['repaired', '归位'], ['talk2', '对话二'], ['night', '入夜'],
   ]],
-  ['第一章 · 落花谷', [['valley', '醒来'], ['valleyWalk', '漫步'], ['nian', '阿念'], ['nianQuest', '留花'], ['nianEnd', '落花祭']]],
+  ['第一章 · 落花谷', [['valley', '醒来'], ['valleyWalk', '漫步'], ['nian', '阿念'], ['nianQuest', '留花'], ['nianEnd', '落花祭'], ['sand', '沙上画'], ['sandDraw', '画画']]],
   ['第二章 · 渡口', []], ['第三章 · 镜城', []], ['第四章 · 雾山', []], ['第五章 · 人间', []], ['终章', []],
 ];
 const testAt = new URLSearchParams(location.search).get('at') || '';
