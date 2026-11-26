@@ -80,21 +80,31 @@ export class Sand {
     this.mesh.renderOrder = 1;
     this.group.add(this.mesh);
 
-    // ---- sand lifted by the wind
-    const N = 1400;
-    const pg = new THREE.BufferGeometry();
-    this.pPos = new Float32Array(N * 3);
-    this.pVel = new Float32Array(N * 3);
-    this.pLife = new Float32Array(N).fill(-1);
-    pg.setAttribute('position', new THREE.BufferAttribute(this.pPos, 3));
+    // ---- sand lifted by the wind: fine grains that hop and stream off the lines, and a little
+    // dust above them. Plain sand colour, faded per grain (no glow, nothing bright enough to bloom).
     const dot = document.createElement('canvas'); dot.width = dot.height = 32;
     const dc = dot.getContext('2d'), gr = dc.createRadialGradient(16, 16, 0, 16, 16, 16);
-    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
     dc.fillStyle = gr; dc.fillRect(0, 0, 32, 32);
-    this.pMat = new THREE.PointsMaterial({ color: 0xe9d8b6, size: 0.05, map: new THREE.CanvasTexture(dot), transparent: true, depthWrite: false, opacity: 0.9 });
-    this.points = new THREE.Points(pg, this.pMat);
-    this.points.frustumCulled = false;
-    this.group.add(this.points);
+    const dotTex = new THREE.CanvasTexture(dot);
+    const cloud = (n, size, opacity) => {
+      const g = new THREE.BufferGeometry();
+      const c = {
+        n, pos: new Float32Array(n * 3), vel: new Float32Array(n * 3), col: new Float32Array(n * 4),
+        life: new Float32Array(n).fill(-1), max: new Float32Array(n), floor: new Float32Array(n), grav: new Float32Array(n), a: new Float32Array(n),
+      };
+      c.pos.fill(-999);
+      g.setAttribute('position', new THREE.BufferAttribute(c.pos, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(c.col, 4));
+      c.mat = new THREE.PointsMaterial({ size, map: dotTex, vertexColors: true, transparent: true, depthWrite: false, opacity });
+      c.points = new THREE.Points(g, c.mat);
+      c.points.frustumCulled = false;
+      c.points.renderOrder = 2;
+      this.group.add(c.points);
+      return c;
+    };
+    this.grains = cloud(3000, 0.032, 1);
+    this.dust = cloud(120, 0.42, 0.32);
 
     // ---- the brush (bamboo handle, dark hair tip), shown only while the traveler draws
     this.brush = new THREE.Group();
@@ -274,24 +284,143 @@ export class Sand {
     }
   }
 
-  /** The wind comes: the grooves smear away downwind and the sand lifts off them. */
-  blow() {
+  /** The wind comes from one side (dir = [x, z] it blows toward): the lines wear away from the
+   *  upwind edge first, raggedly, and the sand of each line lifts off as it goes. */
+  blow(dir = [1, 0], dur = 3.2) {
     this._commit();
     this.blowing = 0.001;
     this.last = null;
-    // the child's lines go too
-    const pts = this.strokes.length ? this.strokes : [];
-    for (const st of this.kidPts) for (const [px, py] of st) pts.push(toWorld(px, py, new THREE.Vector3()));
-    this._lift = pts;
+    this.wind = new THREE.Vector3(dir[0], 0, dir[1]).normalize();
+    const all = this.lctx.getImageData(0, 0, CW, CH).data;
+    let x0 = CW, y0 = CH, x1 = -1, y1 = -1;
+    for (let y = 0; y < CH; y += 2) for (let x = 0; x < CW; x += 2) {
+      if (all[(y * CW + x) * 4 + 3] > 4) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (x1 < 0) { this._ero = null; return; }
+    x0 = Math.max(0, x0 - 4); y0 = Math.max(0, y0 - 4); x1 = Math.min(CW - 1, x1 + 4); y1 = Math.min(CH - 1, y1 + 4);
+    const w = x1 - x0 + 1, h = y1 - y0 + 1;
+    const img = this.lctx.getImageData(x0, y0, w, h);
+    // when each pixel goes: along the wind, with a ragged, lumpy front
+    const et = new Float32Array(w * h);
+    const dx = this.wind.x, dy = this.wind.z;
+    let smin = Infinity, smax = -Infinity;
+    for (const [cx, cy] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) { const s = cx * dx + cy * dy; smin = Math.min(smin, s); smax = Math.max(smax, s); }
+    const span = Math.max(1, smax - smin);
+    const r1 = Math.random() * 9, r2 = Math.random() * 9;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const px = x + x0, py = y + y0;
+      const s = (px * dx + py * dy - smin) / span;
+      const n = Math.sin(px * 0.021 + py * 0.013 + r1) * 0.5 + Math.sin(px * 0.006 - py * 0.017 + r2) * 0.5;
+      et[y * w + x] = 0.35 + s * dur + n * 0.35 + Math.random() * 0.22;
+    }
+    this._ero = { x: x0, y: y0, w, h, img, et, end: 0.35 + dur + 0.9 };
   }
 
   /** After the wind: the sand is smooth again. */
   calm() {
     this.blowing = 0;
+    this._ero = null;
     this.lctx.clearRect(0, 0, CW, CH);
     this.stroke = null; this.kidLine = null; this.cctx.clearRect(0, 0, CW, CH);
     this.strokes = []; this.ink = 0; this.kidPts = []; this.kidStroke = 0;
     this.dirty = true;
+  }
+
+  /** The wind has passed; the sand stays as it is now (smooth where the lines were). */
+  settle() {
+    this.blowing = 0;
+    this._ero = null;
+    this.lctx.clearRect(0, 0, CW, CH);
+    this.strokes = []; this.ink = 0; this.kidPts = []; this.kidStroke = 0; this.kidPic = -1;
+    this.dirty = true;
+  }
+
+  /** A few last grains blown off the sand toward a far point (the road ahead). */
+  drift(to, n = 3, near = null) {
+    for (let j = 0; j < n; j++) {
+      // off the sand, low; or (near someone) floating past at about their height
+      const x = near ? near.x + (Math.random() - 0.3) * 2.4 : SAND.x + (Math.random() - 0.5) * SAND.w * 0.7;
+      const z = near ? near.z + (Math.random() - 0.2) * 2.4 : SAND.z + (Math.random() - 0.5) * SAND.d * 0.7;
+      const d = new THREE.Vector3(to.x - x, 0, to.z - z).normalize();
+      const y = valleyHeight(x, z) + (near ? 0.5 + Math.random() * 1.4 : 0.04);
+      const c = near && Math.random() < 0.35 ? this.dust : this.grains;
+      const i = this._grain(c, x, y, z, d, 0.7 + Math.random() * 0.6, near ? 0.05 : 0.35, 4.5);
+      if (near && i >= 0) { c.floor[i] = y - 1.5; c.grav[i] = 0.02; if (c === this.dust) c.a[i] *= 0.6; }
+    }
+  }
+
+  _erode(dt) {
+    const e = this._ero, t = this.blowing, tp = t - dt;
+    if (!e) return;
+    const d = e.img.data, w = e.w, f = Math.exp(-dt * 7);
+    let budget = 70, dustBudget = 1;
+    for (let i = 0, n = w * e.h; i < n; i++) {
+      const a = d[i * 4 + 3];
+      if (!a) continue;
+      const et = e.et[i];
+      if (t < et) continue;
+      if (tp < et && a > 60) {
+        // the moment this bit of line goes, some of its sand leaves with it
+        if (budget > 0 && Math.random() < 0.1) {
+          budget--;
+          const px = (i % w) + e.x, py = ((i / w) | 0) + e.y;
+          toWorld(px, py, this._v);
+          const high = Math.random() < 0.25;
+          this._grain(this.grains, this._v.x, this._v.y, this._v.z, this.wind, high ? 1.4 + Math.random() * 1.2 : 0.7 + Math.random() * 0.9, high ? 0.5 + Math.random() * 0.7 : 0.08 + Math.random() * 0.3, high ? 2.8 : 1.6 + Math.random());
+        }
+        if (dustBudget > 0 && Math.random() < 0.003) {
+          dustBudget--;
+          const px = (i % w) + e.x, py = ((i / w) | 0) + e.y;
+          toWorld(px, py, this._v);
+          this._grain(this.dust, this._v.x, this._v.y + 0.05, this._v.z, this.wind, 0.6 + Math.random() * 0.5, 0.12 + Math.random() * 0.15, 2.4);
+        }
+      }
+      const na = a * f;
+      d[i * 4 + 3] = na < 8 ? 0 : na;
+    }
+    this.lctx.putImageData(e.img, e.x, e.y);
+    this.dirty = true;
+    if (t > e.end) { this.lctx.clearRect(0, 0, CW, CH); this._ero = null; }
+  }
+
+  _grain(c, x, y, z, dir, speed, up, life) {
+    const L = c.life;
+    const i = L.indexOf(-1);
+    if (i < 0) return -1;
+    L[i] = 0; c.max[i] = life;
+    c.pos[i * 3] = x; c.pos[i * 3 + 1] = y + 0.005; c.pos[i * 3 + 2] = z;
+    const side = (Math.random() - 0.5) * 0.5;
+    c.vel[i * 3] = (dir.x - dir.z * side) * speed;
+    c.vel[i * 3 + 1] = up;
+    c.vel[i * 3 + 2] = (dir.z + dir.x * side) * speed;
+    c.floor[i] = y;
+    c.grav[i] = up > 0.45 ? 0.25 + Math.random() * 0.3 : 1.4 + Math.random() * 1.2;
+    // sand, a little lighter or darker grain by grain
+    // (linear colour: grains a shade darker than the sand so they read against it; dust the sand's own tone)
+    const dust = c === this.dust, v = dust ? 0.46 + Math.random() * 0.08 : 0.24 + Math.random() * 0.14;
+    c.col[i * 4] = v; c.col[i * 4 + 1] = v * 0.8; c.col[i * 4 + 2] = v * 0.56; c.col[i * 4 + 3] = 0;
+    c.a[i] = dust ? 0.35 + Math.random() * 0.25 : 0.6 + Math.random() * 0.4;
+    return i;
+  }
+
+  _cloudUpdate(c, dt, push) {
+    let alive = false;
+    for (let i = 0; i < c.n; i++) {
+      if (c.life[i] < 0) continue;
+      alive = true;
+      const l = (c.life[i] += dt);
+      if (l > c.max[i]) { c.life[i] = -1; c.pos[i * 3 + 1] = -999; c.col[i * 4 + 3] = 0; continue; }
+      const k = i * 3;
+      c.vel[k + 1] -= c.grav[i] * dt;
+      // the wind keeps pushing, with a little flutter
+      c.vel[k] += this.wind.x * push * dt + Math.sin(l * 7 + i) * 0.4 * dt;
+      c.vel[k + 2] += this.wind.z * push * dt + Math.cos(l * 6 + i) * 0.4 * dt;
+      c.pos[k] += c.vel[k] * dt; c.pos[k + 1] += c.vel[k + 1] * dt; c.pos[k + 2] += c.vel[k + 2] * dt;
+      if (c.pos[k + 1] < c.floor[i]) { c.pos[k + 1] = c.floor[i]; c.vel[k + 1] = Math.abs(c.vel[k + 1]) * 0.35; c.vel[k] *= 0.85; c.vel[k + 2] *= 0.85; }
+      const fin = Math.min(1, l / 0.12), fout = Math.min(1, (c.max[i] - l) / (c.max[i] * 0.45));
+      c.col[i * 4 + 3] = c.a[i] * fin * fout;
+    }
+    if (alive) { c.points.geometry.attributes.position.needsUpdate = true; c.points.geometry.attributes.color.needsUpdate = true; }
   }
 
   update(dt) {
@@ -299,40 +428,11 @@ export class Sand {
     if (!this.blowing) this._kidUpdate(dt);
     if (this.blowing) {
       this.blowing += dt;
-      const t = this.blowing;
-      // smear the grooves downwind (+x on the canvas), fading as they go
-      const sc = this.scratch.getContext('2d');
-      sc.clearRect(0, 0, CW, CH);
-      sc.drawImage(this.layer, 0, 0);
-      const l = this.lctx;
-      l.clearRect(0, 0, CW, CH);
-      // it starts as a stir at the edges of the lines and grows into a steady blow over ~3 s
-      const k = THREE.MathUtils.smoothstep(t, 0, 1.2);
-      l.globalAlpha = Math.exp(-dt * (0.15 + 1.05 * k));
-      l.drawImage(this.scratch, (20 + 130 * k) * dt, -8 * k * dt, CW * (1 + 0.05 * k * dt), CH);
-      l.globalAlpha = 0.18 * k;
-      l.drawImage(this.scratch, (70 + 260 * k) * dt, -20 * k * dt);
-      l.globalAlpha = 1;
-      this.dirty = true;
-      // sand grains off the lines
-      if (this._lift && this._lift.length && t < 4) {
-        const n = Math.round(dt * 600 * THREE.MathUtils.smoothstep(t, 0, 0.8) * (1 - t / 4));
-        for (let j = 0; j < n; j++) this._spawn(this._lift[(Math.random() * this._lift.length) | 0]);
-      }
+      this._erode(dt);
     }
-    // grains
-    let alive = false;
-    for (let i = 0; i < this.pLife.length; i++) {
-      if (this.pLife[i] < 0) { this.pPos[i * 3 + 1] = -999; continue; }
-      alive = true;
-      this.pLife[i] += dt;
-      const v = this.pVel;
-      v[i * 3] += dt * 1.6; v[i * 3 + 1] -= dt * 0.25;
-      this.pPos[i * 3] += v[i * 3] * dt; this.pPos[i * 3 + 1] += v[i * 3 + 1] * dt; this.pPos[i * 3 + 2] += v[i * 3 + 2] * dt;
-      if (this.pLife[i] > 2.6) this.pLife[i] = -1;
-    }
-    if (alive || this.blowing) this.points.geometry.attributes.position.needsUpdate = true;
-    this.pMat.opacity = this.blowing ? 0.85 * (1 - THREE.MathUtils.smoothstep(this.blowing, 4, 6.5)) : 0.85;
+    if (!this.wind) this.wind = new THREE.Vector3(1, 0, 0);
+    this._cloudUpdate(this.grains, dt, 1.2);
+    this._cloudUpdate(this.dust, dt, 0.5);
     if (this.dirty) {
       this.vctx.clearRect(0, 0, CW, CH);
       this.vctx.drawImage(this.base, 0, 0);
@@ -343,18 +443,5 @@ export class Sand {
       this.tex.needsUpdate = true;
       this.dirty = false;
     }
-  }
-
-  _spawn(p) {
-    const L = this.pLife;
-    let i = L.indexOf(-1);
-    if (i < 0) return;
-    L[i] = 0;
-    this.pPos[i * 3] = p.x + (Math.random() - 0.5) * 0.05;
-    this.pPos[i * 3 + 1] = p.y + 0.01;
-    this.pPos[i * 3 + 2] = p.z + (Math.random() - 0.5) * 0.05;
-    this.pVel[i * 3] = 0.6 + Math.random() * 1.2;
-    this.pVel[i * 3 + 1] = 0.25 + Math.random() * 0.55;
-    this.pVel[i * 3 + 2] = (Math.random() - 0.6) * 0.5;
   }
 }

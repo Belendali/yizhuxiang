@@ -165,10 +165,11 @@ function voice(keys, { gap = 1.6, hold = 3.4, cls = 'voice' } = {}) {
   const n = keys.length;
   const mine = voiceEls;
   // 阿念's words stand at her right, her grandmother's at her left
-  voiceAnchor = / girl/.test(cls) ? { obj: () => nian && nian.girl, side: 1, h: 1.2 }
-    : / elder/.test(cls) ? { obj: () => nian && nian.elder, side: -1, h: 1.45 }
-    : / kid/.test(cls) ? { obj: () => sand && sand.kid, side: 1, h: 0.85 }
-    : / self/.test(cls) ? { obj: () => walker.group, side: -1, h: 1.75 } : null;
+  // r: how far out from the body's middle the words start (metres; hat and pack included)
+  voiceAnchor = / girl/.test(cls) ? { obj: () => nian && nian.girl, side: 1, h: 1.2, r: 0.42 }
+    : / elder/.test(cls) ? { obj: () => nian && nian.elder, side: -1, h: 1.45, r: 0.5 }
+    : / kid/.test(cls) ? { obj: () => sand && sand.kid, side: 1, h: 0.85, r: 0.42 }
+    : / self/.test(cls) ? { obj: () => walker.group, side: -1, h: 1.75, r: 0.6 } : null;
   keys.forEach((k, i) => after(i * gap, () => {
     if (mine !== voiceEls) return;
     const el = say(k, cls, { '--x': `${((n - 1) / 2 - i) * 2.1}em`, '--y': `${i * 1.5}em` });
@@ -191,32 +192,41 @@ function placeVoices() {
   if (!voiceEls.length) return;
   const o = voiceAnchor && voiceAnchor.obj();
   let ok = !!(o && o.visible && activeScene === 'valley');
+  const W = innerWidth, H = innerHeight, en = document.documentElement.lang === 'en';
+  // the head on screen, and the body's edge on each side of it
+  let hx = 0, hy = 0, edge = 0;
   if (ok) {
     o.getWorldPosition(vaP); vaP.y += voiceAnchor.h;
-    vaS.setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(voiceAnchor.side * 0.3);
-    vaP.add(vaS).project(camera);
+    vaS.setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(voiceAnchor.r);
+    vaS.add(vaP).project(camera);
+    vaP.project(camera);
     ok = vaP.z < 1 && Math.abs(vaP.x) < 1.05 && Math.abs(vaP.y) < 1.1;
+    hx = (vaP.x + 1) / 2 * W; hy = (1 - vaP.y) / 2 * H;
+    edge = Math.abs((vaS.x - vaP.x) / 2 * W) + 14; // plus a little air
   }
-  const W = innerWidth, H = innerHeight, en = document.documentElement.lang === 'en';
-  const ax = (vaP.x + 1) / 2 * W, ay = (1 - vaP.y) / 2 * H, side = voiceAnchor ? voiceAnchor.side : 1;
-  // the columns share one top line, so the longest one decides how high they start
-  let tall = 0;
-  if (ok && !en) for (const el of voiceEls) tall = Math.max(tall, el.offsetHeight);
-  const top = Math.max(H * 0.05, Math.min(H * 0.84 - tall, ay - tall * 0.12));
+  if (!ok) { for (const el of voiceEls) el.style.left = el.style.top = el.style.transform = ''; return; }
+  // the whole block of lines: its width decides which side it fits on
+  let tall = 0, wide = 0;
+  for (const el of voiceEls) { tall = Math.max(tall, el.offsetHeight); wide = en ? Math.max(wide, el.offsetWidth) : wide + el.offsetWidth * 0.82; }
+  if (!en && voiceEls.length) wide += voiceEls[0].offsetWidth * 0.18;
+  const fits = (sd) => sd > 0 ? hx + edge + wide <= W - 8 : hx - edge - wide >= 8;
+  let side = voiceAnchor.side;
+  if (!fits(side) && fits(-side)) side = -side;
+  const ax = hx + side * edge;
+  // the columns share one top line, a little above the head, so they stand beside it
+  const top = Math.max(H * 0.05, Math.min(H * 0.84 - tall, hy - tall * 0.25));
   for (const el of voiceEls) {
-    if (!ok) { el.style.left = el.style.top = el.style.transform = ''; continue; }
     const w = el.offsetWidth, h = el.offsetHeight;
     let x, y;
     if (en) {
       x = side > 0 ? ax : ax - w;
-      y = ay - h * 0.5 + el._i * h * 0.9;
+      y = Math.max(H * 0.05, Math.min(H * 0.84 - h, hy - h * 0.8 + el._i * h * 0.9));
     } else {
       // vertical columns read right to left: the first line is the rightmost one
       x = side > 0 ? ax + (el._n - 1 - el._i) * w * 0.82 : ax - (el._i + 1) * w * 0.82;
       y = top;
     }
     x = Math.max(8, Math.min(W - w - 8, x));
-    if (en) y = Math.max(H * 0.05, Math.min(H * 0.84 - h, y));
     el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.transform = 'none';
   }
 }
@@ -371,7 +381,7 @@ const canvas = renderer.domElement;
 const locked = () => document.pointerLockElement === canvas;
 const FREE_STATES = new Set(['walk', 'inWalk', 'valley', 'valley2']);
 // Directed shots: the mouse/touch neither turns the camera nor skips them.
-const AUTO_SHOTS = new Set(['intro', 'inLook', 'opening', 'leaving', 'rest', 'sleep', 'wake', 'vLook', 'nTalk', 'nEnd', 'sTalk', 'sWind', 'sLeave']);
+const AUTO_SHOTS = new Set(['intro', 'inLook', 'opening', 'leaving', 'rest', 'sleep', 'wake', 'vLook', 'nTalk', 'nEnd', 'sTalk', 'sLook', 'sWind', 'sReal', 'sLeave']);
 
 function lookBy(dx, dy) {
   if (!FREE_STATES.has(state)) return;
@@ -1317,7 +1327,7 @@ function updateValley(dt) {
     if (t > 1.4) once('m1', () => thought('m1', 3.2));
     if (t > 4.8) once('m2', () => thought('m2', 3.2));
     if (t > 8.2 && !fired.has('h-first')) once('m3', () => { thought('m3', 3.8); after(1.4, () => { if (!fired.has('h-first')) hint('keep'); }); });
-    if (t > 24 && !fired.has('h-first')) once('m3b', () => { thought('m3', 3.8); hint('keep'); });
+    if (t > 24 && !fired.has('h-first')) once('m3b', () => hint('keep'));
     if (still && hintKey === 'keep') hint('');
     if (!still && hintKey === 'nLet') hint('');
     // once the traveler has stopped it and let go (or after a while anyway), the petals fall
@@ -1400,14 +1410,15 @@ function startHold() {
 }
 // Every time the world stops, the traveler notices something: the petals, then 阿念, and once
 // her grandmother is on the path, that she has stopped too, and what that means. Lines not yet
-// seen come first, one after another while the hold lasts; after that the plain fact again.
+// seen come first, one after another while the hold lasts; no line is thought twice, so after
+// that only the guide (松开手) shows.
 let freezeId = 0;
 function onFreeze() {
   const id = ++freezeId;
   const elderOn = fired.has('elderGo');
   const seq = elderOn ? ['h4', 'h3', 'r1'] : ['h1', 'h2'];
-  let list = seq.filter((k) => !fired.has('t-' + k));
-  if (!list.length) list = [seq[0]];
+  // a line is thought only once; after that, the plain guide alone
+  const list = seq.filter((k) => !fired.has('t-' + k));
   const step = (i) => {
     if (id !== freezeId || !holding || state !== 'nHold') return;
     if (i >= list.length) { if (elderOn || fired.has('t-h2')) hint('nLet'); return; }
@@ -1513,32 +1524,43 @@ function sandTwoShot(portrait) {
   wantPos.set(SAND_SPOT.x + 0.95 * k, h + 1.6 + 0.35 * (k - 1), SAND_SPOT.z + 2.4 * k);
   wantLook.set(KID_SPOT.x - 0.9, sandH(KID_SPOT.x, KID_SPOT.z) + 0.4, KID_SPOT.z + 1.7);
 }
-let sandAsk = false, sandIdle = 0, sandDrawT = 0, sandShown = false;
+let sandAsk = false, sandIdle = 0, sandDrawT = 0, sandShown = false, sandRound = 1;
+// The road ahead, down the valley: where the last of the sand drifts, and where the traveler goes.
+const aheadV = new THREE.Vector3();
+const sandAhead = () => aheadV.set(valleyPathX(SAND.z - 14), 0, SAND.z - 14);
 function startSandTalk() {
   if (state !== 'valley2') return;
   hint(''); setState('sTalk');
   sandAsk = false;
   after(1.6, () => {
     const a = voice(['k1', 'k2'], KID);
-    after(a - 0.6, () => ask(['take'], startDraw, { quiet: false, wait: 10 }));
+    after(a - 0.6, () => ask(['take'], () => startDraw(1), { quiet: false, wait: 10 }));
   });
 }
-function startDraw() {
+// Twice: the first picture goes (没事 / 那就 再画一个吧), the second goes too.
+function startDraw(round = 1) {
   hint('');
   if (locked()) document.exitPointerLock();
-  fade(1, false, 350);
-  after(0.4, () => {
+  sandRound = round;
+  const begin = () => {
     setState('sDraw');
     sandShown = false;
     sand.brush.visible = true;
     sandIdle = 0; sandDrawT = 0; sandAsk = false;
     sandCamera(camera.aspect < 0.8);
     camPos.copy(wantPos); camLook.copy(wantLook);
-    fade(0, false, 700);
-    sand.kidBegins();
-    after(1.0, () => thought('sd2', 3.2));
-    after(2.4, () => { if (state === 'sDraw' && sand.ink < 40) hint('draw'); });
-  });
+    if (round === 1) {
+      fade(0, false, 700);
+      sand.kidBegins();
+      after(1.0, () => thought('sd2', 3.2));
+      after(2.4, () => { if (state === 'sDraw' && sand.ink < 40) hint('draw'); });
+    } else {
+      // smaller this time, as if the wind might miss a small one
+      after(0.6, () => thought('sa6', 3.2));
+      after(4.5, () => { if (state === 'sDraw' && sand.ink < 40) hint('draw'); });
+    }
+  };
+  if (round === 1) { fade(1, false, 350); after(0.4, begin); } else begin();
 }
 // kneeling at the near edge, looking down at the sand
 function sandCamera(portrait) {
@@ -1547,50 +1569,103 @@ function sandCamera(portrait) {
   wantLook.set(SAND.x - 0.15, sandH(SAND.x, SAND.z), SAND.z + (portrait ? 0.15 : 0.3));
   camLag = 0.25;
 }
-function startWind() {
+// 画好了: a moment to look at it (the first time), then the wind
+function sandDone() {
+  hint('');
+  sand.brush.visible = false;
+  if (sandRound === 1) { setState('sLook'); thought('sa3', 2.2); after(2.0, () => startWind(1)); } else startWind(2);
+}
+function startWind(round) {
   hint('');
   sandAsk = false;
   setState('sWind');
-  sand.blow();
   sand.brush.visible = false;
   sound.ambience({ wind: 0.85, drone: 0, muffle: false });
-  valley.petals.uniforms.uWind.value.set(3.4, 0, 0.5);
+  if (round === 1) {
+    // across the sand, left to right: the first picture goes, and the child's with it
+    sand.blow([1, 0.12], 3.0);
+    valley.petals.uniforms.uWind.value.set(3.4, 0, 0.4);
+    after(0.5, () => thought('sa4', 1.8));
+    after(3.0, () => thought('sa5', 2.4));
+    after(4.6, () => {
+      sound.ambience({ wind: 0.2, drone: 0, muffle: false });
+      valley.petals.uniforms.uWind.value.set(0.55, 0, 0.3);
+      sand.settle();
+      // the child doesn't mind at all: 没事 / 那就 再画一个吧, and starts again
+      const a = voice(['k5', 'k6'], KID);
+      after(1.2, () => sand.kidBegins());
+      after(a - 0.8, () => startDraw(2));
+    });
+    return;
+  }
+  // the second time, up the sand toward the road ahead
+  const ah = sandAhead();
+  sand.blow([ah.x - SAND.x, ah.z - SAND.z], 3.4);
+  valley.petals.uniforms.uWind.value.set(1.6, 0, -2.8);
   after(1.0, () => thought('sw1', 2.8));
-  after(3.6, () => thought('sw2', 3.0));
+  after(3.8, () => thought('sw2', 2.8));
   after(6.6, () => fade(1, false, 600));
   after(7.3, () => {
-    sand.brush.visible = false;
-    sand.calm();
+    sand.settle();
     sandShown = true;
-    P.x = SAND_SPOT.x; P.z = SAND_SPOT.z; P.vx = P.vz = 0; P.yaw = 0;
+    P.x = SAND_SPOT.x; P.z = SAND_SPOT.z; P.vx = P.vz = 0;
+    P.yaw = Math.atan2(-(KID_SPOT.x - P.x), -(KID_SPOT.z - P.z));
     bodyY = null; placeWalkerOut();
     sandTwoShot(camera.aspect < 0.8);
     camPos.copy(wantPos); camLook.copy(wantLook);
     sound.ambience({ wind: 0.18, drone: 0, muffle: false });
-    valley.petals.uniforms.uWind.value.set(0.55, 0, 0.3);
+    valley.petals.uniforms.uWind.value.set(0.5, 0, -0.6);
     fade(0, false, 900);
     after(1.2, () => {
+      // the child laughs: 你的画 / 随风去旅行了, and draws again
       const a = voice(['k3', 'k4'], KID);
-      after(a - 0.4, () => {
-        sound.bowl(1318, 0.035); // the child's laugh, as a small bright chime
-        sand.kidBegins();
-        after(2.6, () => {
-          const b = voice(['t1', 't2'], SELF);
-          after(b + 0.2, () => {
-            setState('sLeave');
-            after(4.2, () => { fadeEl.classList.add('pale'); fade(1, false, 4200); sound.musicLevel(0.4, 6); });
-            after(9.2, () => {
-              titleMain = 'ch1Title'; titleSub = 'ch1End'; renderTitle();
-              document.body.classList.add('ended');
-              titleEl.classList.add('show');
-              againEl.classList.add('show');
-            });
-          });
-        });
+      after(a - 1.0, () => { sound.bowl(1318, 0.035); sand.kidBegins(); });
+      after(a + 0.2, startRealize);
+    });
+  });
+}
+// The traveler takes that in. Close on them: the last of the sand lifts off and drifts away down
+// the road they are on, and they look after it, the way they themselves were carried here
+// (我 也是被风吹来的吧). Then, lightly, to the child: 是啊 / 那就 随它去吧.
+let realLook = 0;
+function startRealize() {
+  setState('sReal');
+  realLook = 0;
+  // a cut, close on them, held still while they look up and away
+  const f = Math.atan2(-(KID_SPOT.x - P.x), -(KID_SPOT.z - P.z));
+  realF.set(-Math.sin(f), 0, -Math.cos(f));
+  realS.set(realF.z, 0, -realF.x);
+  realCamera(camera.aspect < 0.8);
+  camPos.copy(wantPos); camLook.copy(wantLook);
+  sound.ambience({ wind: 0.12, drone: 0, muffle: true });
+  sound.musicLevel(0.2, 3);
+  after(1.0, () => { realLook = 1; });
+  after(2.8, () => { sound.bowl(659, 0.05); thought('sa8', 4.2); });
+  after(7.6, () => { realLook = 0; sound.ambience({ wind: 0.16, drone: 0, muffle: false }); });
+  after(8.4, () => {
+    const b = voice(['st1', 'st2'], SELF);
+    after(b + 0.2, () => {
+      setState('sLeave');
+      after(4.2, () => { fadeEl.classList.add('pale'); fade(1, false, 4200); sound.musicLevel(0.4, 6); });
+      after(9.2, () => {
+        titleMain = 'ch1Title'; titleSub = 'ch1End'; renderTitle();
+        document.body.classList.add('ended');
+        titleEl.classList.add('show');
+        againEl.classList.add('show');
       });
     });
   });
 }
+const realF = new THREE.Vector3(), realS = new THREE.Vector3();
+// in front of the traveler and a little to the side (facing as they were toward the child), slowly nearer
+function realCamera(portrait) {
+  const near = (portrait ? 2.7 : 2.1) - 0.4 * ss(stateTime, 0, 8);
+  const h = sandH(P.x, P.z);
+  wantPos.set(P.x + realF.x * near + realS.x * 0.8, h + 1.52, P.z + realF.z * near + realS.z * 0.8);
+  wantLook.set(P.x + realF.x * 0.2 - realS.x * 0.15, h + (portrait ? 1.25 : 1.4), P.z + realF.z * 0.2 - realS.z * 0.15);
+  camLag = 2.2;
+}
+let realDrift = 0;
 function updateSand(dt, portrait) {
   if (state === 'sTalk') {
     takeTap();
@@ -1623,16 +1698,31 @@ function updateSand(dt, portrait) {
       sand.brush.visible = isMobile ? down || sand.ink > 0 : true;
     }
     if (down) { sandIdle = 0; if (hintKey === 'draw' && sand.ink > 120) hint(''); } else sandIdle += dt;
-    // once something is drawn and the brush has rested a moment: 画好了
-    if (!sandAsk && sand.ink > 300 && sandIdle > 1.4) {
+    // once something is drawn and the brush has rested a moment: 画好了 (a small one will do, the second time)
+    const enough = sandRound === 1 ? 300 : 120;
+    if (!sandAsk && sand.ink > enough && sandIdle > 1.4) {
       sandAsk = true;
-      ask(['done'], startWind, { quiet: false, wait: Math.max(12, 90 - sandDrawT) });
+      ask(['done'], sandDone, { quiet: false, wait: Math.max(12, 90 - sandDrawT) });
     }
-    if (sandDrawT > 120 && !sandAsk) { sandAsk = true; startWind(); }
+    if (sandDrawT > 120 && !sandAsk) { sandAsk = true; sandDone(); }
   }
-  if (state === 'sWind') {
+  if (state === 'sLook' || state === 'sWind') {
     takeTap();
     if (sandShown) { sandTwoShot(portrait); camLag = 1.2; } else sandCamera(portrait);
+  }
+  if (state === 'sReal') {
+    takeTap();
+    P.vx = P.vz = 0;
+    // they look up from the sand and after it, down the road; then back
+    const ah = sandAhead();
+    const toKid = Math.atan2(-(KID_SPOT.x - P.x), -(KID_SPOT.z - P.z));
+    const toRoad = Math.atan2(-(ah.x - P.x), -(ah.z - P.z)) - 0.25;
+    P.yaw = angleLerp(P.yaw, realLook ? toRoad : toKid, Math.min(1, dt * 1.2));
+    placeWalkerOut(dt);
+    // the last grains, drifting past them and off toward the road
+    realDrift += dt;
+    if (realDrift > 0.1 && stateTime < 7.5) { realDrift = 0; sand.drift(ah, 1); sand.drift(ah, 1, P); }
+    realCamera(portrait);
   }
   if (state === 'sLeave') {
     takeTap();
@@ -1749,7 +1839,7 @@ function tick(dt) {
   if (activeScene === 'valley') {
     // the traveler is hidden while the view is behind their eyes
     v3.set(P.x, P.y + EYE_Y, P.z);
-    walker.group.visible = camera.position.distanceTo(v3) > 0.75 && state !== 'sDraw' && !(state === 'sWind' && !sandShown);
+    walker.group.visible = camera.position.distanceTo(v3) > 0.75 && state !== 'sDraw' && state !== 'sLook' && !(state === 'sWind' && !sandShown);
   }
   if (activeScene === 'in') {
     updateStick(dt);
@@ -1812,7 +1902,7 @@ window.__game = {
       fade(1, false, 10); goValley(); fade(0, false, 600);
       fired.add('vl-w1'); fired.add('vl-w2');
       const z = SAND.z + 10; P.x = valleyPathX(z); P.z = z; P.yaw = 0; placeWalkerOut(); setState('valley2');
-      if (target === 'sandDraw') { P.x = SAND_SPOT.x; P.z = SAND_SPOT.z; placeWalkerOut(); setState('sTalk'); fired.add('sd-see'); startDraw(); }
+      if (target === 'sandDraw') { P.x = SAND_SPOT.x; P.z = SAND_SPOT.z; placeWalkerOut(); setState('sTalk'); fired.add('sd-see'); startDraw(1); }
     }
     if (target === 'nian') {
       fade(1, false, 10); goValley(); fade(0, false, 600);
