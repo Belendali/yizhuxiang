@@ -536,7 +536,7 @@ function stepBody(b, dt, { canStand, speed = 1.7, runMul = 2.4 }) {
   let dx = fx * f + rx * s, dz = fz * f + rz * s;
   const len = Math.hypot(dx, dz);
   if (len > 0) { dx /= len; dz /= len; }
-  const top = speed * (run ? runMul : 1); // the run clip reads naturally at about 4 m/s
+  const top = speed * (run ? runMul : 1); // Shift runs: the run clip reads naturally at about 4 m/s
   const k = Math.min(1, dt * 6);
   b.vx += (dx * top - b.vx) * k;
   b.vz += (dz * top - b.vz) * k;
@@ -744,7 +744,7 @@ function updateOutside(dt) {
     walker.lean = 0.25 + tired * 0.55;
     // a steadier pace on the stairs, so the stride can find each tread
     const onStairs = Math.abs(P.x) < 2.4 && P.z < L.stairBottomZ + 0.4 && P.z > L.stairTopZ - 0.2;
-    const sp = stepBody(P, dt, { canStand: canStandOut, speed: lerp(1.9, 1.5, tired) * (onStairs ? 0.9 : 1), runMul: onStairs ? 1.25 : lerp(1.8, 1.4, tired) });
+    const sp = stepBody(P, dt, { canStand: canStandOut, speed: lerp(2.0, 1.6, tired) * (onStairs ? 0.9 : 1), runMul: onStairs ? 1.4 : lerp(2.1, 1.7, tired) });
     placeWalkerOut(dt);
     if (Math.abs(tired - windTired) > 0.04) { windTired = tired; sound.ambience({ wind: 0.55 + tired * 0.35 }); }
     const foot = walker.consumeStep();
@@ -1021,7 +1021,7 @@ function updateInside(dt) {
 
   if (state === 'inWalk') {
     takeTap();
-    const sp = stepBody(PI_, dt, { canStand: canStandIn, speed: 1.2 });
+    const sp = stepBody(PI_, dt, { canStand: canStandIn, speed: 1.7, runMul: 2.4 });
     walkerIn.group.position.set(PI_.x, 0, PI_.z);
     walkerIn.group.rotation.y = PI_.yaw;
     if (walkerIn.consumeStep() && sp > 0.2) sound.step(true);
@@ -1259,7 +1259,7 @@ function updateValley(dt) {
   }
 
   if (state === 'valley') {
-    const sp = stepBody(P, dt, { canStand: canStandValley, speed: 1.4, runMul: 1.7 });
+    const sp = stepBody(P, dt, { canStand: canStandValley, speed: 2.0, runMul: 2.1 });
     placeWalkerOut(dt);
     if (walker.consumeStep() && sp > 0.2) sound.step(true);
     if (sp > 0.3 && stateTime > 2) once('v-moved', () => setTimeout(() => { if (hintKey === 'move') hint(''); }, 3000));

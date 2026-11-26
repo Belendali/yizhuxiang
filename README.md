@@ -13,7 +13,7 @@ Then open http://localhost:8000. It needs to be served over http because ES modu
 
 ## Controls
 
-- Desktop: WASD / arrow keys to move, Shift to walk faster, mouse to look. The first click captures the mouse; Esc releases it.
+- Desktop: WASD / arrow keys to move, Shift to run, mouse to look. The first click captures the mouse; Esc releases it.
 - Phone: hold to walk forward, drag to turn.
 - E / click / tap: push the door (when standing at it), take a stick of incense, offer it.
 - Hold E / mouse / screen at the altar: light the incense from the candle.
