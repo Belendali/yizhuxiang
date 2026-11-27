@@ -40,6 +40,7 @@ function kneelYaw(t) {
   return 0;
 }
 const ss = THREE.MathUtils.smoothstep;
+const UP_AX = new THREE.Vector3(0, 1, 0);
 const damp = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * dt));
 
 /** Measure a clip once: ground offset, natural speed, left/right heel-strike phases. */
@@ -98,13 +99,13 @@ class Actor {
     const bone = (n) => this.model.getObjectByName('mixamorig' + n);
     this.b = {
       spine: [bone('Spine'), bone('Spine1'), bone('Spine2')],
-      head: bone('Head'),
+      head: bone('Head'), neck: bone('Neck'),
       lFoot: bone('LeftFoot'), lToe: bone('LeftToeBase'),
       rFoot: bone('RightFoot'), rToe: bone('RightToeBase'),
     };
 
     // bones the lean writes to (restored to the animated pose every frame)
-    this._touched = [...this.b.spine];
+    this._touched = [...this.b.spine, this.b.neck, this.b.head];
     this._saved = this._touched.map((bn) => bn.quaternion.clone());
 
     this.mixer = new THREE.AnimationMixer(this.model);
@@ -132,6 +133,11 @@ class Actor {
     this.still = 0;          // seconds standing still
     this.lookW = 0; this.lookOn = false;
     this.leanW = 0;
+    // where the head turns, on top of the clip (radians; pitch > 0 looks up), and a soft laugh
+    this.gaze = { pitch: 0, yaw: 0 };
+    this._gz = { pitch: 0, yaw: 0 };
+    this.laughT = 0;
+    this._ax = new THREE.Vector3(); this._q1 = new THREE.Quaternion(); this._q2 = new THREE.Quaternion();
     this.steps = [];
     this.lastPos = null;
     this.staff = new THREE.Group(); // compatibility; this traveler carries no staff
@@ -222,6 +228,29 @@ class Actor {
     this.leanW = damp(this.leanW, this.lean, 3, dt);
     if (this.leanW > 0.001) this._lean(this.leanW * 0.5);
 
+    // ---- the head: looking up, down or aside, slowly; and a breath of a laugh
+    const gz = this._gz;
+    gz.pitch = damp(gz.pitch, this.gaze.pitch, 1.6, dt);
+    gz.yaw = damp(gz.yaw, this.gaze.yaw, 1.6, dt);
+    let pitch = gz.pitch, bob = 0;
+    if (this.laughT > 0) {
+      const t = (this.laughT += dt);
+      const fall = Math.max(0, 1 - t / 1.1);
+      // two or three small shakes of the shoulders, the head dipping a little
+      bob = Math.abs(Math.sin(t * 17)) * 0.05 * fall;
+      pitch -= Math.sin(Math.min(1, t / 0.25) * Math.PI / 2) * 0.12 * fall;
+      if (t > 1.6) this.laughT = 0;
+    }
+    if (Math.abs(pitch) + Math.abs(gz.yaw) + bob > 1e-4) {
+      const right = this._ax.setFromMatrixColumn(this.model.matrixWorld, 0).normalize();
+      if (bob) this._turnW(this.b.spine[2], right, -bob);
+      for (const bn of [this.b.neck, this.b.head]) {
+        if (!bn) continue;
+        this._turnW(bn, right, -pitch * 0.5);
+        this._turnW(bn, UP_AX, gz.yaw * 0.5);
+      }
+    }
+
     // ---- feet: position and lift above the floor
     const base = pos.y + this.info.footFloor;
     const v = this._v;
@@ -252,6 +281,17 @@ class Actor {
     bone.updateMatrixWorld(true);
   }
 
+  /** A soft laugh. */
+  laugh() { this.laughT = 1e-4; }
+
+  _turnW(bone, axis, angle) {
+    const pq = bone.parent.getWorldQuaternion(this._q1);
+    const bw = this._q2.copy(pq).multiply(bone.quaternion);
+    bw.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, angle));
+    bone.quaternion.copy(pq.invert().multiply(bw));
+    bone.updateMatrixWorld(true);
+  }
+
   _lean(angle) {
     // forward bend about the body's right axis, spread over the spine
     const right = this._v.set(1, 0, 0).applyQuaternion(this.group.getWorldQuaternion(this._q));
@@ -268,6 +308,7 @@ class ProceduralActor {
     this.staff = this.t.staff;
     this.feet = null; // no foot data; the game falls back to the ground under the body
     this.lastPos = null; this.speed = 0;
+    this.gaze = { pitch: 0, yaw: 0 };
   }
   get lean() { return this.t.bow; }
   set lean(v) { this.t.bow = v * 0.5; }
@@ -282,6 +323,7 @@ class ProceduralActor {
   }
   consumeStep() { return this.t.consumeStep(); }
   rise() {}
+  laugh() {}
 }
 
 /** Load the character once and return `count` independent actors (or procedural fallbacks). */

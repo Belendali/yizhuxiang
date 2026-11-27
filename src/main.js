@@ -1554,7 +1554,6 @@ function startDraw(round = 1) {
     camPos.copy(wantPos); camLook.copy(wantLook);
     if (round === 1) {
       fade(0, false, 700);
-      sand.kidBegins();
       after(1.0, () => thought('sd2', 3.2));
       after(2.4, () => { if (state === 'sDraw' && sand.ink < 40) hint('draw'); });
     } else {
@@ -1576,7 +1575,16 @@ function sandCamera(portrait) {
 function sandDone() {
   hint('');
   sand.brush.visible = false;
-  if (sandRound === 1) { setState('sLook'); thought('sa3', 2.2); after(2.0, () => startWind(1)); } else startWind(2);
+  if (sandRound === 1) {
+    // a look at it (还不错), and the boy at the side claps: 好漂亮
+    setState('sLook'); thought('sa3', 2.2);
+    after(1.4, () => {
+      sand.clap(); sand.voiceOf = 2;
+      const a = voice(['k7'], KID);
+      after(a, () => { sand.voiceOf = 0; });
+    });
+    after(5.2, () => startWind(1));
+  } else startWind(2);
 }
 function startWind(round) {
   hint('');
@@ -1614,27 +1622,17 @@ function startWind(round) {
     P.x = SAND_SPOT.x; P.z = SAND_SPOT.z; P.vx = P.vz = 0;
     P.yaw = Math.atan2(-(KID_SPOT.x - P.x), -(KID_SPOT.z - P.z));
     bodyY = null; placeWalkerOut();
-    sandTwoShot(camera.aspect < 0.8);
-    camPos.copy(wantPos); camLook.copy(wantLook);
-    sound.ambience({ wind: 0.18, drone: 0, muffle: false });
     valley.petals.uniforms.uWind.value.set(0.5, 0, -0.6);
+    startRealize();
     fade(0, false, 900);
-    after(1.2, () => {
-      // the child laughs: 你的画 / 随风去旅行了, and draws again
-      const a = voice(['k3', 'k4'], KID);
-      after(a - 1.0, () => { sound.bowl(1318, 0.035); sand.kidBegins(); });
-      after(a + 0.2, startRealize);
-    });
   });
 }
-// The traveler takes that in. Close on them: the last of the sand lifts off and drifts away down
-// the road they are on, and they look after it, the way they themselves were carried here
-// (我 也是被风吹来的吧). Then, lightly, to the child: 是啊 / 那就 随它去吧.
-let realLook = 0;
+// The traveler takes that in. Close on their face: the child says 你的画 / 随风去旅行了 and they
+// get up off the knee; they look up at the sky (我 也是被风吹来的吧) and down at the sand, and
+// laugh softly, as if they see it now. Then, lightly, to the child: 呵 / 是啊 / 那就 随它去吧.
 function startRealize() {
   setState('sReal');
-  realLook = 0;
-  // a cut, close on them, held still while they look up and away
+  // a cut, close on them
   const f = Math.atan2(-(KID_SPOT.x - P.x), -(KID_SPOT.z - P.z));
   realF.set(-Math.sin(f), 0, -Math.cos(f));
   realS.set(realF.z, 0, -realF.x);
@@ -1642,15 +1640,33 @@ function startRealize() {
   camPos.copy(wantPos); camLook.copy(wantLook);
   sound.ambience({ wind: 0.12, drone: 0, muffle: true });
   sound.musicLevel(0.2, 3);
-  // they look up from the sand and after it, and slowly get up
-  after(1.0, () => { realLook = 1; });
-  after(1.3, () => walker.rise());
-  after(2.8, () => { sound.bowl(659, 0.05); thought('sa8', 4.2); });
-  after(7.6, () => { realLook = 0; sound.ambience({ wind: 0.16, drone: 0, muffle: false }); });
-  after(8.4, () => {
-    const b = voice(['st1', 'st2'], SELF);
-    after(b + 0.2, () => {
+  walker.gaze.pitch = 0; walker.gaze.yaw = 0;
+  // the child: 你的画 / 随风去旅行了, and draws again
+  let t = 1.0;
+  after(t, () => {
+    const a = voice(['k3', 'k4'], KID);
+    after(a - 1.0, () => { sound.bowl(1318, 0.035); sand.kidBegins(); });
+  });
+  // they get up, slowly
+  after(1.6, () => walker.rise());
+  t += 5.0;
+  // up at the sky, where the sand went
+  after(t, () => { walker.gaze.pitch = 0.55; walker.gaze.yaw = -0.15; });
+  after(t + 1.0, () => { sound.bowl(659, 0.05); thought('sa8', 4.0); });
+  t += 5.4;
+  // down at the sand, smooth again
+  after(t, () => { walker.gaze.pitch = -0.42; walker.gaze.yaw = 0; sound.ambience({ wind: 0.16, drone: 0, muffle: false }); });
+  t += 2.4;
+  // and a soft laugh
+  after(t, () => { walker.gaze.pitch = -0.1; walker.laugh(); });
+  after(t + 0.3, () => {
+    const b = voice(['sa9', 'st1', 'st2'], SELF);
+    after(b - 1.2, () => { walker.gaze.pitch = 0; });
+    after(b + 1.4, () => {
       setState('sLeave');
+      // a cut to the wide shot (sliding round would pass through them)
+      sandTwoShot(camera.aspect < 0.8);
+      camPos.copy(wantPos); camLook.copy(wantLook);
       after(4.2, () => { fadeEl.classList.add('pale'); fade(1, false, 4200); sound.musicLevel(0.4, 6); });
       after(9.2, () => {
         titleMain = 'ch1Title'; titleSub = 'ch1End'; renderTitle();
@@ -1718,19 +1734,24 @@ function updateSand(dt, portrait) {
   if (state === 'sLook' || state === 'sWind') {
     takeTap();
     if (sandShown) { sandTwoShot(portrait); camLag = 1.2; } else sandCamera(portrait);
+    if (state === 'sLook' && sand.kids[2]) {
+      // over to the boy at the side as he claps, then back for the wind
+      const w = sand.kids[2].group.position;
+      const k = ss(stateTime, 1.0, 2.4) * (1 - ss(stateTime, 4.4, 5.2));
+      wantLook.lerp(tmp.set(w.x - 0.5, w.y + 0.35, w.z - 0.2), k * (portrait ? 0.75 : 0.55));
+      camLag = 0.9;
+    }
   }
   if (state === 'sReal') {
     takeTap();
     P.vx = P.vz = 0;
     // they look up from the sand and after it, down the road; then back
     const ah = sandAhead();
-    const toKid = Math.atan2(-(KID_SPOT.x - P.x), -(KID_SPOT.z - P.z));
-    const toRoad = Math.atan2(-(ah.x - P.x), -(ah.z - P.z)) - 0.25;
-    P.yaw = angleLerp(P.yaw, realLook ? toRoad : toKid, Math.min(1, dt * 1.2));
+    P.yaw = angleLerp(P.yaw, Math.atan2(-(KID_SPOT.x - P.x), -(KID_SPOT.z - P.z)), Math.min(1, dt * 1.2));
     placeWalkerOut(dt);
     // the last grains, drifting past them and off toward the road
     realDrift += dt;
-    if (realDrift > 0.1 && stateTime < 7.5) { realDrift = 0; sand.drift(ah, 1); sand.drift(ah, 1, P); }
+    if (realDrift > 0.1 && stateTime > 4 && stateTime < 11) { realDrift = 0; sand.drift(ah, 1); sand.drift(ah, 1, P); }
     realCamera(portrait);
   }
   if (state === 'sLeave') {
