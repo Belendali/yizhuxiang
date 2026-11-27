@@ -10,6 +10,8 @@ import { Traveler } from './traveler.js';
 //     Walk and run share one phase so the feet never fight, and the cycle rate follows
 //     the speed (stride length x cadence), so the feet do not slide.
 //  2. Idle variation: after standing a while, a look-around plays and blends back.
+//  2b. A kneel (`kneel` true/false) the game sets, down on one knee at the sand's edge to draw;
+//      `rise()` plays the getting up.
 //  3. One procedural layer: a small forward lean (`lean` 0..1), used for the tired
 //     trudge through the snow.
 //  4. Per-clip ground offsets so every clip keeps the feet on the floor, and `feet`
@@ -21,7 +23,22 @@ const CLIPS = {
   look: 'Short_Breathe_and_Look_Around',
   walk: 'Walking',
   run: 'Running',
+  kneel: 'Stand_Up3',
 };
+// Stand_Up3 goes from lying down, up onto one knee, to standing. Held on the knee (low, bowed
+// toward the ground) it is how the traveler kneels to draw; played on from there, they get up.
+const KNEEL_T = 2.3, RISE_END = 4.7;
+// on the knee the body is turned a little off the clip's forward; it comes back as they rise
+// (clip time, degrees), so the kneel faces where the game turned them
+const KNEEL_YAW = [[2.3, -30], [2.7, -28], [3.1, -10], [3.5, -2], [3.9, 0]];
+function kneelYaw(t) {
+  if (t <= KNEEL_YAW[0][0]) return THREE.MathUtils.degToRad(KNEEL_YAW[0][1]);
+  for (let i = 1; i < KNEEL_YAW.length; i++) {
+    const [t1, y1] = KNEEL_YAW[i], [t0, y0] = KNEEL_YAW[i - 1];
+    if (t <= t1) return THREE.MathUtils.degToRad(y0 + (y1 - y0) * (t - t0) / (t1 - t0));
+  }
+  return 0;
+}
 const ss = THREE.MathUtils.smoothstep;
 const damp = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * dt));
 
@@ -103,10 +120,13 @@ class Actor {
       this.act[key] = a;
     }
     // walk and run are driven by a shared phase, not by the mixer clock
-    for (const k of ['walk', 'run']) if (this.act[k]) this.act[k].timeScale = 0;
+    for (const k of ['walk', 'run', 'kneel']) if (this.act[k]) this.act[k].timeScale = 0;
     if (this.act.look) { this.act.look.setLoop(THREE.LoopOnce); this.act.look.clampWhenFinished = true; }
 
     this.lean = 0;           // 0..1 forward lean (tired trudge)
+    this.kneel = false;      // down on one knee (set by the game)
+    this.kneelW = 0;
+    this.risingT = 0;
     this.speed = 0;
     this.phase = 0;
     this.still = 0;          // seconds standing still
@@ -166,11 +186,23 @@ class Actor {
     if (this.lookOn && (moving > 0.05 || look.time > look.getClip().duration - 1.0)) this.lookOn = false;
     this.lookW = damp(this.lookW, this.lookOn ? 1 : 0, 2.2, dt);
 
+    // kneeling: held on the knee, or (rising) played on until standing, then handed back to idle
+    const kn = this.act.kneel;
+    let want = 0;
+    if (kn && this.kneel) {
+      if (this.risingT > 0) { this.risingT += dt; kn.time = Math.min(KNEEL_T + this.risingT, RISE_END); }
+      else kn.time = KNEEL_T;
+      want = kn.time < RISE_END ? 1 : 0;
+    } else this.risingT = 0;
+    this.kneelW = damp(this.kneelW, want, want > this.kneelW ? 2.2 : 2.6, dt);
+    const up = 1 - this.kneelW;
     const wIdle = 1 - moving;
-    idle.setEffectiveWeight(wIdle * (1 - this.lookW));
-    if (look) look.setEffectiveWeight(wIdle * this.lookW);
-    walk.setEffectiveWeight(moving * (1 - runMix));
-    run.setEffectiveWeight(moving * runMix);
+    idle.setEffectiveWeight(wIdle * (1 - this.lookW) * up);
+    if (look) look.setEffectiveWeight(wIdle * this.lookW * up);
+    walk.setEffectiveWeight(moving * (1 - runMix) * up);
+    run.setEffectiveWeight(moving * runMix * up);
+    if (kn) kn.setEffectiveWeight(this.kneelW);
+    this.model.rotation.y = Math.PI - (kn ? kneelYaw(kn.time) * this.kneelW : 0);
 
     // The mixer only rewrites a bone when its animated value changes, so undo last
     // frame's lean first; otherwise it would pile up frame after frame.
@@ -207,6 +239,9 @@ class Actor {
   }
 
   consumeStep() { return this.steps.shift() || null; }
+
+  /** Get up off the knee. */
+  rise() { if (this.kneel && !this.risingT) this.risingT = 1e-4; }
 
   /** Rotate a bone by a world-space rotation `qw`. */
   _rotateWorld(bone, qw) {
@@ -246,6 +281,7 @@ class ProceduralActor {
     this.t.update(dt, Math.min(1, this.speed / 1.5));
   }
   consumeStep() { return this.t.consumeStep(); }
+  rise() {}
 }
 
 /** Load the character once and return `count` independent actors (or procedural fallbacks). */
@@ -262,6 +298,7 @@ export async function createActors(url, count, fallbackOpts = []) {
       if (key === 'idle') idleMin = info[key].minY;
     }
     for (const key of Object.keys(CLIPS)) if (info[key]) info.ground[key] = idleMin - info[key].minY;
+    info.ground.kneel = 0; // (its lowest foot is while lying down; on the knee it already sits on the floor)
     info.footFloor = idleMin; // height of the lowest foot bone when standing on the floor
     if (!info.idle || !info.walk || !info.run) throw new Error('character is missing idle/walk/run clips');
     return Array.from({ length: count }, () => new Actor(gltf, info));

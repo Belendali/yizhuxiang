@@ -1,16 +1,15 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { valleyHeight, SAND_AT } from './valley.js';
-import { propModel } from './models.js';
 
 // 第一章 · 沙上画: a little further down the path from 阿念's tree, a patch of pale sand beside
-// the path where a child sits drawing. The traveler is handed a brush and draws whatever they
-// like; when they say it is done, the wind lifts the sand and carries the drawing off.
+// the path where children are drawing with twigs. The boy hands the traveler his twig; they
+// kneel and draw whatever they like; when they say it is done, the wind takes the drawing off.
 
 export const SAND = { x: SAND_AT.x, z: SAND_AT.z, w: 4.6, d: 3.4 };
-// where the traveler kneels to draw (the near edge, facing up the valley) and where the child sits
+// where the traveler kneels to draw (the near edge, facing up the valley) and where the boy squats
 export const SAND_SPOT = { x: SAND.x - 0.35, z: SAND.z + SAND.d / 2 + 0.45 };
-export const KID_SPOT = { x: SAND.x + 1.15, z: SAND.z - SAND.d / 2 - 0.3 };
+export const KID_SPOT = { x: SAND.x + 1.0, z: SAND.z - SAND.d / 2 + 0.75 };
 
 const CW = 1024, CH = Math.round(CW * SAND.d / SAND.w);
 const x0 = SAND.x - SAND.w / 2, z0 = SAND.z - SAND.d / 2;
@@ -31,6 +30,31 @@ const KID_PICS = [
   // a fish
   [[[-0.42, 0.8], [-0.2, 0.62], [0.12, 0.6], [0.3, 0.75], [0.12, 0.92], [-0.2, 0.9], [-0.42, 0.72]], [[-0.42, 0.72], [-0.58, 0.6], [-0.58, 0.92], [-0.42, 0.8]], [[0.16, 0.72], [0.18, 0.74]]],
 ];
+
+// a girl's pictures: a flower, a little house
+const RED_PICS = [
+  [circle(0, 0.8, 0.07, 14), ...Array.from({ length: 5 }, (_, i) => { const a = (i / 5) * Math.PI * 2 + 0.3; return circle(Math.cos(a) * 0.15, 0.8 + Math.sin(a) * 0.15, 0.075, 12, a + Math.PI); }),
+    [[0, 0.66], [0.02, 0.52], [0.0, 0.4]], [[0.01, 0.5], [0.12, 0.55], [0.15, 0.48], [0.02, 0.48]]],
+  [[[-0.17, 0.45], [0.17, 0.45], [0.17, 0.72], [-0.17, 0.72], [-0.17, 0.45]], [[-0.24, 0.72], [0, 0.93], [0.24, 0.72]], [[-0.04, 0.45], [-0.04, 0.58], [0.04, 0.58], [0.04, 0.45]]],
+];
+
+const TWIG_LEN = 0.44;
+// how a drawing child leans in and reaches down (radians, about their own left-right axis)
+const REACH = { lean: 0.2, back: 0.55 };
+const GRIP = 0.3; // a child holds their twig this far up from its tip
+const DOWN = new THREE.Vector3(0, -1, 0);
+const KID_SCALE = 0.72; // the models come in at grown-up height; children of seven or eight
+// face: the way each child looks, [x, z]; pose: the clip they hold; t: where in it they start
+const KIDS = [
+  // the boy in bamboo green: asks the traveler over and hands them a twig, then draws again
+  { file: 'kid-bamboo', x: KID_SPOT.x, z: KID_SPOT.z, face: [0, 1], pose: 'CrouchLookAroundBow', t: 0, r: 0.45, pics: KID_PICS },
+  // a girl in red, drawing at the far corner
+  { file: 'kid-red', x: SAND.x - 1.05, z: SAND.z - SAND.d / 2 + 0.8, face: [0.5, 1], pose: 'CrouchLookAroundBow', t: 2.6, r: 0.42, pics: RED_PICS },
+  // a boy sitting cross-legged at the side, watching
+  { file: 'kid-wander', x: SAND.x + SAND.w / 2 - 0.45, z: SAND.z + 0.35, face: [-1, -0.1], pose: 'Sit_Cross_Legged_on_Floor', t: 0.9, r: 0.45 },
+];
+const ss = THREE.MathUtils.smoothstep;
+const angleTo = (a, b, k) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
 
 export class Sand {
   constructor(scene) {
@@ -106,70 +130,85 @@ export class Sand {
     this.grains = cloud(3000, 0.032, 1);
     this.dust = cloud(120, 0.42, 0.32);
 
-    // ---- the brush (bamboo handle, dark hair tip), shown only while the traveler draws
-    this.brush = new THREE.Group();
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.01, 0.26, 8), new THREE.MeshStandardMaterial({ color: 0xa88a55, roughness: 0.6 }));
-    handle.position.y = 0.17;
-    const ferrule = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.011, 0.03, 8), new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.5 }));
-    ferrule.position.y = 0.045;
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.045, 10), new THREE.MeshStandardMaterial({ color: 0x1d1812, roughness: 0.9 }));
-    tip.rotation.x = Math.PI; tip.position.y = 0.0;
-    this.brush.add(handle, ferrule, tip);
-    for (const m of this.brush.children) m.position.y += 0.022;
-    this.brush.visible = false;
-    this.group.add(this.brush);
-
-    // ---- the child (a stand-in made from 阿念's model, in other colours, until their own model)
-    this.kid = new THREE.Group();
-    this.kid.position.set(KID_SPOT.x, valleyHeight(KID_SPOT.x, KID_SPOT.z), KID_SPOT.z);
-    this.kid.rotation.y = Math.PI; // facing +Z, toward the sand and the traveler
-    this.group.add(this.kid);
-    this.kidSeat = new THREE.Group();
-    this.kidSeat.position.copy(this.kid.position).add(new THREE.Vector3(0, -0.03, -0.12));
-    this.group.add(this.kidSeat);
-    this._seatModel = propModel('rocks', { width: 0.6, anchor: 'bottom' }).then((m) => { this.kidSeat.add(m); return m; }).catch(() => null);
-    this.colliders = [{ x: KID_SPOT.x, z: KID_SPOT.z, r: 0.45 }];
-    this.mixer = null;
-    new GLTFLoader().load(`./assets/models/anian.glb?v=${window.__V || ''}`, (gltf) => {
-      const m = gltf.scene;
-      this.mixer = new THREE.AnimationMixer(m);
-      const sit = gltf.animations.find((c) => c.name === 'Chair_Sit_Idle_F');
-      if (sit) this.mixer.clipAction(sit).play();
-      this.mixer.update(0);
-      m.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(m, true);
-      const s = 0.98 / (box.max.y - box.min.y);
-      m.scale.setScalar(s);
-      m.position.y = -box.min.y * s - 0.05;
-      m.position.z = -0.25 * s;
-      m.rotation.y = Math.PI;
-      m.traverse((o) => {
-        if (!o.isMesh) return;
-        o.castShadow = true; o.frustumCulled = false;
-        o.material = o.material.clone();
-        o.material.color.setHex(0x9fc0c4); // a blue-green cotton instead of her pink
+    // ---- the children: the boy in bamboo green who asks the traveler over (and hands them the
+    // twig), a girl in red drawing at the far corner, and a boy sitting at the side to watch.
+    const loader = new GLTFLoader();
+    this.kids = KIDS.map((k) => {
+      const g = new THREE.Group();
+      g.position.set(k.x, valleyHeight(k.x, k.z), k.z);
+      g.rotation.y = Math.atan2(k.face[0], k.face[1]);
+      this.group.add(g);
+      const kid = { spec: k, group: g, yaw0: g.rotation.y, mixer: null, acts: {}, cur: null, head: null };
+      loader.load(`./assets/models/${k.file}.glb?v=${window.__V || ''}`, (gltf) => {
+        const m = gltf.scene;
+        m.scale.setScalar(KID_SCALE);
+        m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
+        g.add(m);
+        kid.mixer = new THREE.AnimationMixer(m);
+        for (const c of gltf.animations) kid.acts[c.name] = kid.mixer.clipAction(c);
+        kid.head = m.getObjectByName('mixamorigHead');
+        // bones the drawing reach bends (put back to the clip's pose before each mixer update)
+        kid.reachBones = ['Spine1', 'Spine2', 'RightArm', 'RightForeArm'].map((n) => m.getObjectByName('mixamorig' + n));
+        kid.saved = kid.reachBones.map((b) => b.quaternion.clone());
+        kid.reach = 0;
+        kid.hands = [m.getObjectByName('mixamorigLeftHand'), m.getObjectByName('mixamorigRightHand')];
+        if (kid === this.kids[0]) this._prepGive(kid);
+        this._pose(kid, k.pose, 0);
+        if (kid.cur) kid.cur.time = k.t;
+        kid.mixer.update(0);
       });
-      this.kid.add(m);
-      // a low pile of stones right under the child's hips, as for 阿念
-      this.kid.updateMatrixWorld(true);
-      const hips = m.getObjectByName('mixamorigHips');
-      this._seatModel.then((rock) => {
-        if (!hips || !rock) return;
-        const h = hips.getWorldPosition(new THREE.Vector3());
-        const gy = valleyHeight(h.x, h.z);
-        this.kidSeat.position.set(h.x, gy - 0.03, h.z);
-        const rh = new THREE.Box3().setFromObject(rock).getSize(new THREE.Vector3()).y / this.kidSeat.scale.y || 0.25;
-        this.kidSeat.scale.y = Math.max(0.5, (h.y - gy - 0.06) / rh);
-      });
+      return kid;
     });
+    this.kid = this.kids[0].group;
 
+    // ---- twigs: the one the traveler draws with (still called the brush by the game; its pivot
+    // at the tip), one in each drawing child's hand, and a spare lying by the boy, which he
+    // picks up once he has given the traveler his own.
+    this.brush = new THREE.Group();
+    this.brush.visible = false;
+    this.groundTwig = new THREE.Group();
+    this.group.add(this.brush, this.groundTwig);
+    for (const kid of this.kids) {
+      if (!kid.spec.pics) continue;
+      kid.twig = new THREE.Group();
+      this.group.add(kid.twig);
+    }
+    new GLTFLoader().load(`./assets/models/twig.glb?v=${window.__V || ''}`, (g) => {
+      // grip: how far up from the tip the group's origin sits
+      const make = (grip) => {
+        const m = g.scene.clone(true);
+        const s = TWIG_LEN / 1.9;
+        m.scale.set(s, s * 0.55, s * 0.55);
+        m.rotation.z = Math.PI / 2; // its length along +Y, the thin end down
+        m.position.y = TWIG_LEN / 2 - grip;
+        m.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        return m;
+      };
+      this.brush.add(make(0));
+      this.groundTwig.add(make(TWIG_LEN / 2));
+      for (const kid of this.kids) if (kid.twig) kid.twig.add(make(GRIP));
+    });
+    // a point at the boy's head, for his spoken lines to stand beside
+    this.speaker = new THREE.Object3D();
+    this.speaker.position.set(KID_SPOT.x, valleyHeight(KID_SPOT.x, KID_SPOT.z) + 0.8, KID_SPOT.z);
+    this.group.add(this.speaker);
+    this.colliders = KIDS.map((k) => ({ x: k.x, z: k.z, r: k.r }));
+    this.giving = 0; this.picking = 0;
+    this.REACH = REACH; // (for tuning from the console)
+    this._q = new THREE.Quaternion();
+    // a twig carried in the fist
+    this._inHand = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, Math.PI / 2));
+    // the children who draw, and what each of them draws, picture after picture
+    this.drawers = this.kids.filter((k) => k.spec.pics).map((kid) => {
+      const k = kid.spec;
+      return kid.drawer = { kid, x: k.x, z: k.z, yaw: Math.atan2(k.face[0], k.face[1]), pics: k.pics, n: -1, s: 0, t: 0, pts: [], line: null };
+    });
+    this._v2 = new THREE.Vector3(); this._v3 = new THREE.Vector3(); this._v4 = new THREE.Vector3(); this._q4 = new THREE.Quaternion(); this._q2 = new THREE.Quaternion(); this._q3 = new THREE.Quaternion(); this._qw = new THREE.Quaternion();
     // drawing state
     this.strokes = [];      // traveler's points in world space (for the wind to lift)
     this.ink = 0;           // how much the traveler has drawn, in canvas px
     this.last = null;       // last canvas point of the current stroke
     this.stroke = null;     // the traveler's stroke in progress (canvas points)
-    this.kidLine = null;    // the child's stroke in progress
-    this.kidPic = -1; this.kidStroke = 0; this.kidT = 0; this.kidPts = [];
     this.blowing = 0;       // seconds since the wind came; 0 = calm
     this._ray = new THREE.Raycaster();
     this._v = new THREE.Vector3();
@@ -233,13 +272,13 @@ export class Sand {
   _redrawCurrent() {
     this.cctx.clearRect(0, 0, CW, CH);
     if (this.stroke) this._groove(this.cctx, this.stroke);
-    if (this.kidLine) this._groove(this.cctx, this.kidLine, 0.8);
+    for (const d of this.drawers) if (d.line) this._groove(this.cctx, d.line, 0.8);
     this.dirty = true;
   }
   _commit() {
     if (this.stroke && this.stroke.length > 1) this._groove(this.lctx, this.stroke);
-    if (this.kidLine && this.kidLine.length > 1) this._groove(this.lctx, this.kidLine, 0.8);
-    this.stroke = null; this.kidLine = null;
+    for (const d of this.drawers) { if (d.line && d.line.length > 1) this._groove(this.lctx, d.line, 0.8); d.line = null; }
+    this.stroke = null;
     this._redrawCurrent();
   }
 
@@ -263,25 +302,169 @@ export class Sand {
     this.last = pt;
   }
 
-  /** The child begins the next picture. */
+  /** The children begin their next pictures. */
   kidBegins() {
-    this.kidPic = (this.kidPic + 1) % KID_PICS.length;
-    this.kidStroke = 0; this.kidT = 0;
-    this.kidPts = KID_PICS[this.kidPic].map((s) => s.map(([dx, dz]) => toPx(KID_SPOT.x + dx, KID_SPOT.z + dz)));
+    for (const d of this.drawers) {
+      d.n = (d.n + 1) % d.pics.length;
+      d.s = 0; d.t = 0; d.line = null;
+      const c = Math.cos(d.yaw), sn = Math.sin(d.yaw);
+      // the picture in front of them, turned the way they face
+      d.pts = d.pics[d.n].map((st) => st.map(([dx, z]) => { const dz = z - 0.42; return toPx(d.x + dx * c + dz * sn, d.z - dx * sn + dz * c); }));
+    }
   }
 
   _kidUpdate(dt) {
-    if (this.kidPic < 0 || this.kidStroke >= this.kidPts.length) return;
-    const st = this.kidPts[this.kidStroke];
-    const prev = Math.floor(this.kidT);
-    this.kidT += dt * 7; // points per second
-    const now = Math.min(st.length - 1, Math.floor(this.kidT));
-    if (now !== prev || !this.kidLine) { this.kidLine = st.slice(0, now + 1); this._redrawCurrent(); }
-    if (this.kidT >= st.length - 1) {
-      this._groove(this.lctx, st, 0.8);
-      this.kidLine = null; this._redrawCurrent();
-      this.kidStroke++; this.kidT = 0;
+    for (const d of this.drawers) {
+      if (d.n < 0 || d.s >= d.pts.length) continue;
+      if (d.kid.mixer && d.kid.reach < 0.6) continue; // not until their twig is down at the sand
+      const st = d.pts[d.s];
+      const prev = Math.floor(d.t);
+      d.t += dt * 7; // points per second
+      const now = Math.min(st.length - 1, Math.floor(d.t));
+      if (now !== prev || !d.line) { d.line = st.slice(0, now + 1); this._redrawCurrent(); }
+      if (d.t >= st.length - 1) {
+        this._groove(this.lctx, st, 0.8);
+        d.line = null; this._redrawCurrent();
+        d.s++; d.t = 0;
+      }
     }
+  }
+
+  // ---- the children's bodies
+  _pose(kid, name, fade = 0.5, once = false) {
+    const a = kid.acts[name];
+    if (!a || kid.cur === a) return;
+    a.reset();
+    a.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat);
+    a.clampWhenFinished = once;
+    a.play();
+    if (kid.cur && fade > 0) a.crossFadeFrom(kid.cur, fade, false);
+    else if (kid.cur) kid.cur.stop();
+    kid.cur = a;
+  }
+
+  /** Where in his pick-up the boy's hand is lowest (and which hand): the twig lies just there. */
+  _prepGive(kid) {
+    const a = kid.acts.Collect_Object;
+    if (!a) return;
+    a.play();
+    const v = new THREE.Vector3();
+    let best = Infinity;
+    for (let t = 0.6; t < 3.6; t += 0.05) {
+      kid.mixer.setTime(t);
+      kid.group.updateMatrixWorld(true);
+      kid.hands[1].getWorldPosition(v);
+      if (v.y < best) { best = v.y; kid.pickT = t; kid.pickAt = v.clone(); }
+    }
+    a.stop();
+    kid.mixer.setTime(0);
+    if (!kid.pickAt) return;
+    const p = kid.pickAt;
+    this.groundTwig.position.set(p.x, valleyHeight(p.x, p.z) + 0.02, p.z);
+    this.groundTwig.rotation.set(Math.PI / 2, kid.yaw0 + 1.1, 0, 'YXZ');
+  }
+
+  /** The boy gets up and turns to the traveler (at x, z), his twig in his hand. */
+  give(x, z) {
+    const k = this.kids[0];
+    if (!k.mixer) return;
+    this.giving = 0.001;
+    this.giveTo = Math.atan2(x - k.group.position.x, z - k.group.position.z);
+    this._pose(k, 'Talk_with_Left_Hand_on_Hip', 0.9);
+  }
+
+  /** The traveler has his twig now: he picks up the spare one and goes back to his drawing. */
+  taken() {
+    const k = this.kids[0];
+    if (!k.mixer || this.picking) return;
+    this.giving = 0;
+    this.picking = 0.001;
+    if (k.twig) k.twig.visible = false;
+    this._pose(k, 'Collect_Object', 0.6, true);
+  }
+
+  _rotW(bone, axis, angle) {
+    const pq = bone.parent.getWorldQuaternion(this._q2);
+    const bw = this._q3.copy(pq).multiply(bone.quaternion);
+    bw.premultiply(this._qw.setFromAxisAngle(axis, angle));
+    bone.quaternion.copy(pq.invert().multiply(bw));
+    bone.updateMatrixWorld(true);
+  }
+
+  /** Two-bone reach: bend the elbow to the right length, then swing the arm onto the target. */
+  _ik(arm, fore, hand, T, r) {
+    const S = arm.getWorldPosition(new THREE.Vector3()), E = fore.getWorldPosition(new THREE.Vector3());
+    const H = hand.getWorldPosition(new THREE.Vector3());
+    const a = S.distanceTo(E), b = E.distanceTo(H);
+    const d = Math.min(S.distanceTo(T), (a + b) * 0.995);
+    const u = S.clone().sub(E), w = H.clone().sub(E);
+    const want = Math.acos(THREE.MathUtils.clamp((a * a + b * b - d * d) / (2 * a * b), -1, 1));
+    const n = u.clone().cross(w);
+    if (n.lengthSq() > 1e-10) this._rotW(fore, n.normalize(), (want - u.angleTo(w)) * r);
+    hand.getWorldPosition(H);
+    const from = H.sub(S).normalize(), to = T.clone().sub(S).normalize();
+    const ax = from.clone().cross(to);
+    if (ax.lengthSq() > 1e-10) this._rotW(arm, ax.normalize(), from.angleTo(to) * r);
+  }
+
+  _kidsUpdate(dt) {
+    for (const k of this.kids) {
+      if (!k.mixer) continue;
+      const rb = k.reachBones;
+      for (let i = 0; i < rb.length; i++) rb[i].quaternion.copy(k.saved[i]);
+      k.mixer.update(dt);
+      for (let i = 0; i < rb.length; i++) k.saved[i].copy(rb[i].quaternion);
+      // while a child is drawing, they lean in and their right hand goes down to the sand, moving
+      const d = k.drawer;
+      const drawing = d && !this.blowing && d.n >= 0 && d.s < d.pts.length && k.cur === k.acts[k.spec.pose];
+      k.reach += ((drawing ? 1 : 0) - k.reach) * (1 - Math.exp(-dt * 3));
+      if (k.reach > 0.01) {
+        k.group.updateMatrixWorld(true);
+        k.tt = (k.tt || 0) + dt;
+        const side = this._v2.set(1, 0, 0).applyQuaternion(k.group.quaternion);
+        const r = k.reach;
+        this._rotW(rb[0], side, REACH.lean * r);
+        this._rotW(rb[1], side, REACH.lean * r);
+        // the twig's tip to the end of the line they are drawing (or where the next one starts),
+        // the hand up the twig from it, back toward the child
+        const pt = d.line && d.line.length ? d.line[d.line.length - 1] : d.pts[d.s] && d.pts[d.s][0];
+        if (pt) {
+          toWorld(pt[0], pt[1], this._v2); this._v2.y -= 0.02;
+          if (!k.tip) k.tip = this._v2.clone(); else k.tip.lerp(this._v2, 1 - Math.exp(-dt * 10));
+        }
+        if (k.tip) {
+          const fwd = this._v4.set(0, 0, 1).applyQuaternion(k.group.quaternion);
+          const hand = this._v3.set(0, 1, 0).addScaledVector(fwd, -REACH.back).normalize().multiplyScalar(GRIP).add(k.tip);
+          this._ik(rb[2], rb[3], k.hands[1], hand, r);
+        }
+      }
+    }
+    const k = this.kids[0];
+    if (this.giving && k.mixer) {
+      this.giving += dt;
+      k.group.rotation.y = angleTo(k.group.rotation.y, this.giveTo, Math.min(1, dt * 1.5) * ss(this.giving, 0.6, 2.0));
+    }
+    if (this.picking && k.mixer) {
+      this.picking += dt;
+      k.group.rotation.y = angleTo(k.group.rotation.y, k.yaw0, Math.min(1, dt * 2));
+      if (!k.twig.visible && this.picking >= (k.pickT || 1.5)) { this.groundTwig.visible = false; k.twig.visible = true; }
+      const a = k.acts.Collect_Object;
+      if (a && k.cur === a && a.time > a.getClip().duration - 0.8) { this._pose(k, k.spec.pose, 0.8); this.picking = 0; }
+    }
+    // each child's twig: carried in the fist, or (drawing) pointed from the hand down to the line
+    for (const kid of this.kids) {
+      if (!kid.twig || !kid.twig.visible || !kid.hands) continue;
+      const h = kid.hands[1];
+      h.getWorldPosition(kid.twig.position);
+      h.getWorldQuaternion(this._q).multiply(this._inHand);
+      if (kid.tip && kid.reach > 0.01) {
+        const dir = this._v3.copy(kid.tip).sub(kid.twig.position).normalize();
+        this._q4.setFromUnitVectors(DOWN, dir);
+        this._q.slerp(this._q4, kid.reach);
+      }
+      kid.twig.quaternion.copy(this._q);
+    }
+    if (k.head) { k.head.getWorldPosition(this.speaker.position); this.speaker.position.y += 0.12; }
   }
 
   /** The wind comes from one side (dir = [x, z] it blows toward): the lines wear away from the
@@ -321,8 +504,9 @@ export class Sand {
     this.blowing = 0;
     this._ero = null;
     this.lctx.clearRect(0, 0, CW, CH);
-    this.stroke = null; this.kidLine = null; this.cctx.clearRect(0, 0, CW, CH);
-    this.strokes = []; this.ink = 0; this.kidPts = []; this.kidStroke = 0;
+    this.stroke = null; this.cctx.clearRect(0, 0, CW, CH);
+    this.strokes = []; this.ink = 0;
+    for (const d of this.drawers) { d.pts = []; d.s = 0; d.line = null; }
     this.dirty = true;
   }
 
@@ -331,7 +515,8 @@ export class Sand {
     this.blowing = 0;
     this._ero = null;
     this.lctx.clearRect(0, 0, CW, CH);
-    this.strokes = []; this.ink = 0; this.kidPts = []; this.kidStroke = 0; this.kidPic = -1;
+    this.strokes = []; this.ink = 0;
+    for (const d of this.drawers) { d.pts = []; d.s = 0; d.line = null; }
     this.dirty = true;
   }
 
@@ -424,7 +609,7 @@ export class Sand {
   }
 
   update(dt) {
-    if (this.mixer) this.mixer.update(dt);
+    this._kidsUpdate(dt);
     if (!this.blowing) this._kidUpdate(dt);
     if (this.blowing) {
       this.blowing += dt;

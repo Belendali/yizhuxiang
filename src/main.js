@@ -168,7 +168,7 @@ function voice(keys, { gap = 1.6, hold = 3.4, cls = 'voice' } = {}) {
   // r: how far out from the body's middle the words start (metres; hat and pack included)
   voiceAnchor = / girl/.test(cls) ? { obj: () => nian && nian.girl, side: 1, h: 1.2, r: 0.42 }
     : / elder/.test(cls) ? { obj: () => nian && nian.elder, side: -1, h: 1.45, r: 0.5 }
-    : / kid/.test(cls) ? { obj: () => sand && sand.kid, side: 1, h: 0.85, r: 0.42 }
+    : / kid/.test(cls) ? { obj: () => sand && sand.speaker, side: 1, h: 0, r: 0.4 }
     : / self/.test(cls) ? { obj: () => walker.group, side: -1, h: 1.75, r: 0.6 } : null;
   keys.forEach((k, i) => after(i * gap, () => {
     if (mine !== voiceEls) return;
@@ -1504,8 +1504,8 @@ function updateNianEnd(dt, portrait) {
 }
 let closeShot = false;
 // ---------------------------------------------------------------- 沙上画
-// After 阿念's story the traveler walks on. Further down the path a child sits drawing in a
-// patch of sand; they hand the traveler a brush. The traveler draws whatever they like, and
+// After 阿念's story the traveler walks on. Further down the path children are drawing in a
+// patch of sand with twigs; the boy hands the traveler his. The traveler draws whatever they like, and
 // when it is done the wind lifts the sand and takes the drawing away (风太大了 / 留不下呢).
 // The child laughs (你的画 / 随风去旅游了) and starts another; the traveler smiles, lets it
 // go (是啊 / 随它去吧) and goes on.
@@ -1532,7 +1532,9 @@ function startSandTalk() {
   if (state !== 'valley2') return;
   hint(''); setState('sTalk');
   sandAsk = false;
-  after(1.6, () => {
+  // the boy picks a twig up off the sand, stands and turns to them with it
+  sand.give(SAND_SPOT.x, SAND_SPOT.z);
+  after(1.8, () => {
     const a = voice(['k1', 'k2'], KID);
     after(a - 0.6, () => ask(['take'], () => startDraw(1), { quiet: false, wait: 10 }));
   });
@@ -1543,6 +1545,7 @@ function startDraw(round = 1) {
   if (locked()) document.exitPointerLock();
   sandRound = round;
   const begin = () => {
+    if (round === 1) sand.taken();
     setState('sDraw');
     sandShown = false;
     sand.brush.visible = true;
@@ -1639,7 +1642,9 @@ function startRealize() {
   camPos.copy(wantPos); camLook.copy(wantLook);
   sound.ambience({ wind: 0.12, drone: 0, muffle: true });
   sound.musicLevel(0.2, 3);
+  // they look up from the sand and after it, and slowly get up
   after(1.0, () => { realLook = 1; });
+  after(1.3, () => walker.rise());
   after(2.8, () => { sound.bowl(659, 0.05); thought('sa8', 4.2); });
   after(7.6, () => { realLook = 0; sound.ambience({ wind: 0.16, drone: 0, muffle: false }); });
   after(8.4, () => {
@@ -1661,12 +1666,16 @@ const realF = new THREE.Vector3(), realS = new THREE.Vector3();
 function realCamera(portrait) {
   const near = (portrait ? 2.7 : 2.1) - 0.4 * ss(stateTime, 0, 8);
   const h = sandH(P.x, P.z);
-  wantPos.set(P.x + realF.x * near + realS.x * 0.8, h + 1.52, P.z + realF.z * near + realS.z * 0.8);
-  wantLook.set(P.x + realF.x * 0.2 - realS.x * 0.15, h + (portrait ? 1.25 : 1.4), P.z + realF.z * 0.2 - realS.z * 0.15);
-  camLag = 2.2;
+  // at their head's height: low while they kneel, rising with them as they get up
+  const hd = walker.b ? walker.b.head.getWorldPosition(tmp).y - h : 1.62;
+  wantPos.set(P.x + realF.x * near + realS.x * 0.8, h + hd - 0.1, P.z + realF.z * near + realS.z * 0.8);
+  wantLook.set(P.x + realF.x * 0.2 - realS.x * 0.15, h + hd - (portrait ? 0.37 : 0.22), P.z + realF.z * 0.2 - realS.z * 0.15);
+  camLag = 1.2;
 }
 let realDrift = 0;
 function updateSand(dt, portrait) {
+  // down on one knee at the sand's edge from taking the twig until they get up again
+  walker.kneel = state === 'sDraw' || state === 'sLook' || state === 'sWind' || state === 'sReal';
   if (state === 'sTalk') {
     takeTap();
     // step over to the near edge of the sand, then face it
@@ -1884,6 +1893,7 @@ window.__game = {
   tap() { tapQueued = true; },
   get quest() { return quest; },
   get nian() { return nian; },
+  get sand() { return sand; },
   put(x, z, yaw = 0) { P.x = x; P.z = z; P.yaw = yaw; P.vx = P.vz = 0; placeWalkerOut(); },
   answer(k) { answer(k); },
   look(dx, dy) { lookBy(dx, dy); },
