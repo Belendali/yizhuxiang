@@ -1534,7 +1534,7 @@ function startSandTalk() {
   sandAsk = false;
   // the boy picks a twig up off the sand, stands and turns to them with it
   sand.give(SAND_SPOT.x, SAND_SPOT.z);
-  after(1.8, () => {
+  after(3.2, () => {
     const a = voice(['k1', 'k2'], KID);
     after(a - 0.6, () => ask(['take'], () => startDraw(1), { quiet: false, wait: 10 }));
   });

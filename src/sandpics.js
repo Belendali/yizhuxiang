@@ -1,4 +1,4 @@
-// The children's pictures in the sand, small ones drawn the way ink paintings are: 山水, 锦鲤, 荷花, 竹.
+// The children's pictures in the sand, little ones drawn the way ink paintings are: 山水, 锦鲤, 荷花, 竹.
 // Each is authored as SVG-like path strings in its own little canvas (x right, y down = toward
 // the viewer, the way the traveler and the camera see it), then sampled into strokes in metres
 // around the picture's centre: [x right, y toward the viewer]. Strokes are drawn in order.
@@ -51,7 +51,7 @@ const circ = (cx, cy, r) => {
  * Build a picture. `size`: metres per 100 units; `parts`: [d, transform?] where transform is
  * {x, y, r (degrees), s, bend (radius; bends the part along an arc), fx (mirror)}.
  */
-function picture(name, w, h, size, parts, weight = 0.32) {
+function picture(name, w, h, size, parts, weight = 0.24) {
   const k = size / 100, step = STEP / k;
   const strokes = [];
   for (const [d, t = {}] of parts) {
@@ -69,66 +69,42 @@ function picture(name, w, h, size, parts, weight = 0.32) {
   return { name, w: w * k, h: h * k, weight, strokes };
 }
 
-// ---- 山水: peaks with a few texture strokes, near hills, a pine, water, a little boat, birds, a sun
-const shanshui = picture('shanshui', 220, 160, 0.3, [
-  ['M8 112 C24 98 36 80 50 70 C58 76 62 84 70 86 C80 66 92 40 108 28 C118 46 126 62 140 70 C150 60 158 54 166 52 C178 66 194 86 214 100'],
-  ['M106 36 C100 50 98 64 102 80'], ['M113 44 C118 56 116 66 123 78'], ['M98 52 C94 60 94 68 96 76'],
-  ['M52 76 C49 84 51 90 56 98'], ['M164 58 C160 70 162 80 168 88'], ['M172 66 C172 74 176 80 182 86'],
-  ['M4 128 C24 116 44 112 62 120 C76 112 92 110 108 118'],
-  ['M118 112 C136 104 150 104 166 112'],
-  ['M31 128 C33 114 29 100 33 86'],
-  ['M17 96 C25 91 35 91 47 96'], ['M19 106 C27 101 37 101 46 106'], ['M21 116 C28 112 36 112 43 116'],
-  ['M66 138 C86 133 102 139 122 135'], ['M118 148 C140 143 160 149 186 144'], ['M26 152 C44 148 58 152 76 149'],
-  ['M124 122 C134 130 158 130 170 122'], ['M148 121 L148 111'], ['M142 111 L148 105 L154 111'], ['M156 117 L174 132'],
-  [circ(184, 26, 11)],
-  ['M50 36 Q54 30 58 36 Q62 30 66 36'], ['M72 24 Q75 20 78 24 Q81 20 84 24'],
+// They are drawn with a finger, so each is a handful of strokes, about a hand-span across.
+const SIZE = 0.27; // metres per 100 units
+
+// ---- 山水: two peaks, water below, a sun and a pair of birds
+const shanshui = picture('shanshui', 100, 100, SIZE, [
+  ['M4 70 C16 58 24 46 34 40 C42 48 46 54 52 56 C60 40 68 24 78 16 C86 30 92 48 98 62'],
+  ['M10 82 C30 76 50 78 70 82'], ['M44 93 C60 89 76 91 92 93'],
+  [circ(22, 20, 7)],
+  ['M50 24 Q54 19 58 24 Q62 19 66 24'],
 ]);
 
-// ---- 锦鲤: one little koi turning (seen from above), a few ripples
-const KOI = [
-  'M42 0 C36 -9 12 -15 -8 -13 C-20 -11 -30 -6 -36 0 C-30 6 -20 11 -8 13 C12 15 36 9 42 0',
-  'M-35 0 C-45 -10 -57 -20 -66 -17 C-60 -9 -57 -3 -61 3 C-57 9 -61 18 -67 21 C-57 23 -45 11 -35 0',
-  'M22 -10 C20 -19 13 -24 7 -23', 'M22 10 C20 19 13 24 7 23',
-  'M-8 -12 C-10 -17 -16 -18 -20 -16', 'M-8 12 C-10 17 -16 18 -20 16',
-  'M4 -10 Q8 0 4 10',
-  'M42 -2 C46 -5 48 -9 46 -12', 'M42 2 C46 5 48 9 46 12',
-  circ(34, -5, 1.6), circ(34, 5, 1.6),
-];
-const koi = picture('koi', 200, 200, 0.25, [
-  ...KOI.filter((d) => !/^M-8 /.test(d)).map((d) => [d, { x: 106, y: 92, r: -10, s: 1.5, bend: 170 }]),
-  ['M28 168 C52 158 76 158 100 168'], ['M118 180 C138 172 158 172 178 180'],
-  [circ(40, 60, 4)], [circ(30, 44, 2.6)],
+// ---- 锦鲤: a little fish, its eye, a fin, a bubble and a ripple
+const koi = picture('koi', 100, 100, SIZE, [
+  ['M84 45 C76 32 52 29 34 38 C27 41 23 44 21 45 C23 46 27 49 34 52 C52 61 76 58 84 45'],
+  ['M22 45 C14 36 8 31 3 33 C7 40 7 50 3 57 C8 59 14 54 22 45'],
+  [circ(72, 42, 2.6)],
+  ['M50 33 C47 25 41 22 35 24'],
+  [circ(91, 26, 3.2)],
+  ['M22 78 C40 71 58 71 76 78'],
 ]);
 
-const lotus = picture('lotus', 200, 200, 0.25, [
-  ['M100 80 C88 60 90 40 100 26 C110 40 112 60 100 80'],
-  ['M98 80 C80 72 70 56 70 40 C84 46 94 60 98 80'], ['M102 80 C120 72 130 56 130 40 C116 46 106 60 102 80'],
-  ['M96 82 C76 82 60 72 52 60 C70 60 86 68 96 82'], ['M104 82 C124 82 140 72 148 60 C130 60 114 68 104 82'],
-  ['M100 82 C102 110 98 140 102 186'],
-  ['M14 142 C18 120 54 110 80 122 C92 128 94 142 86 152 C66 168 26 166 14 142'],
-  ['M52 140 L22 140'], ['M52 140 L36 120'], ['M52 140 L64 118'], ['M52 140 L84 136'], ['M52 140 L70 160'], ['M52 140 L34 160'],
-  ['M146 186 C144 156 148 126 150 106'], ['M150 106 C142 98 144 86 152 80 C158 88 158 98 150 106'],
-  ['M160 40 L184 28'], ['M168 36 C164 26 170 22 174 32'], ['M174 33 C172 22 178 20 180 30'], ['M168 37 C170 46 176 46 174 36'],
-  ['M110 192 C130 186 150 186 170 192'], ['M30 186 C46 181 62 181 78 186'],
+// ---- 荷花: a lotus flower on its stem, a leaf, water
+const lotus = picture('lotus', 100, 100, SIZE, [
+  ['M50 46 C43 36 43 24 50 12 C57 24 57 36 50 46'],
+  ['M48 46 C36 42 29 32 29 21 C40 25 46 34 48 46'], ['M52 46 C64 42 71 32 71 21 C60 25 54 34 52 46'],
+  ['M50 46 C52 62 48 78 50 94'],
+  ['M57 80 C62 67 83 63 94 74 C89 87 67 91 57 80'],
+  ['M6 94 C22 88 38 88 54 94'],
 ]);
 
-// ---- 竹: two stems with their joints, sprays of leaves, a moon
+// ---- 竹: one stem with its joints, a few leaves, the moon
 const LEAF = 'M0 0 C10 -4 22 -4 32 0 C22 3 10 3 0 0';
-const stem = (x0, x1, top, segs) => {
-  const out = [];
-  const len = (190 - top) / segs;
-  for (let i = 0; i < segs; i++) {
-    const ya = 190 - i * len, yb = ya - len + 4, xa = x0 + (x1 - x0) * i / segs, xb = x0 + (x1 - x0) * (i + 1) / segs;
-    out.push([`M${xa} ${ya} L${xb} ${yb}`], [`M${xb - 5} ${yb - 1} L${xb + 5} ${yb - 1}`]);
-  }
-  return out;
-};
-const bamboo = picture('bamboo', 200, 200, 0.25, [
-  ...stem(70, 78, 18, 5), ...stem(116, 110, 46, 4),
-  ...[[78, 60, -30], [78, 60, -60], [78, 60, 10], [76, 100, 200], [76, 100, 160], [76, 100, 220],
-    [111, 80, -20], [111, 80, 20], [111, 80, -50], [112, 120, 190], [112, 120, 150]].map(([x, y, r]) => [LEAF, { x, y, r, s: 1.1 }]),
-  ['M78 60 L96 46'], ['M111 80 L128 70'],
-  [circ(160, 40, 14)],
+const bamboo = picture('bamboo', 100, 100, SIZE, [
+  ['M40 97 L41 75'], ['M41 72 L43 51'], ['M43 48 L45 28'], ['M45 25 L46 8'],
+  ...[[45, 27, -30], [45, 27, -62], [43, 50, 205], [43, 50, 165], [46, 9, -40]].map(([x, y, r]) => [LEAF, { x, y, r, s: 0.9 }]),
+  [circ(78, 22, 8)],
 ]);
 
 export const PICS = { shanshui, koi, lotus, bamboo };

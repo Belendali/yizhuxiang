@@ -4,7 +4,7 @@ import { valleyHeight, SAND_AT } from './valley.js';
 import { PICS } from './sandpics.js';
 
 // 第一章 · 沙上画: a little further down the path from 阿念's tree, a patch of pale sand beside
-// the path where children are drawing with twigs. The boy hands the traveler his twig; they
+// the path where children are drawing with their fingers. The boy hands the traveler a twig; they
 // kneel and draw whatever they like; when they say it is done, the wind takes the drawing off.
 
 export const SAND = { x: SAND_AT.x, z: SAND_AT.z, w: 4.6, d: 3.4 };
@@ -20,22 +20,23 @@ const toWorld = (px, py, out) => {
   return out.set(x, valleyHeight(x, z) + 0.03, z);
 };
 
-// the sticks: this long, held this far up from the tip, and as thick as a 0.44 m twig would be
-const STICK = 0.75, STICK_GRIP = 0.55, STICK_THICK = 0.44 / 1.9 * 0.55;
-const KID_RATE = 24; // points a second a child draws (a point every 1.2 cm, so about 30 cm a second)
-// how a drawing child leans in (radians, about their own left-right axis), and how the stick
-// slants from the tip up to their hand: back toward them and out to their left, clear of the knees
-const REACH = { lean: 0.2, back: 0.8, out: 0.9 };
+// the stick the boy gives the traveler: this long, and as thick as a 0.44 m twig would be
+const STICK = 0.75, STICK_THICK = 0.44 / 1.9 * 0.55;
+// how a drawing child leans in (radians, about their own left-right axis), and how far above the
+// line their wrist is (the finger below it draws), a little back toward them
+const REACH = { lean: 0.1, finger: 0.07, back: 0.03, drop: 0.3 };
+const KID_RATE = 14; // points a second a finger draws (a point every 1.2 cm, so about 17 cm a second)
 const DOWN = new THREE.Vector3(0, -1, 0);
 const KID_SCALE = 0.72; // the models come in at grown-up height; children of seven or eight
-// face: the way each child looks, [x, z]; pose: the clip they hold; t: where in it they start
-// pics: what they draw, one after another (a new one after each wind); at: how far in front of
-// their feet the middle of the picture is
+// face: the way each child looks, [x, z]; pose: the clip they hold (shared between the children,
+// whose skeletons match); t: where in it they start; pics: what they draw with a finger, one after
+// another (a new one after each wind); at, side: where the middle of the picture is, ahead of them
+// and to their left (the hand they draw with), within an arm's reach as they sit and lean
 const KIDS = [
-  // the boy in bamboo green: asks the traveler over and hands them a twig, then draws again
-  { file: 'kid-bamboo', x: KID_SPOT.x, z: KID_SPOT.z, face: [0, 1], pose: 'CrouchLookAroundBow', t: 0, r: 0.45, pics: [PICS.shanshui, PICS.koi, PICS.bamboo], at: 0.42 },
+  // the boy in bamboo green: asks the traveler over and hands them the stick stuck in the sand by him, then draws again
+  { file: 'kid-bamboo', x: KID_SPOT.x, z: KID_SPOT.z, face: [0, 1], pose: 'CrouchLookAroundBow', t: 0, r: 0.45, pics: [PICS.shanshui, PICS.koi, PICS.bamboo], at: 0.27, side: 0.12 },
   // a girl in red, drawing at the far corner
-  { file: 'kid-red', x: SAND.x - 0.9, z: SAND.z - SAND.d / 2 + 0.75, face: [0.3, 1], pose: 'CrouchLookAroundBow', t: 2.6, r: 0.42, pics: [PICS.koi, PICS.lotus, PICS.shanshui], at: 0.42 },
+  { file: 'kid-red', x: SAND.x - 0.9, z: SAND.z - SAND.d / 2 + 0.75, face: [0.3, 1], pose: 'CrouchLookAroundBow', t: 2.6, r: 0.42, pics: [PICS.koi, PICS.lotus, PICS.shanshui], at: 0.27, side: 0.12 },
   // a boy sitting cross-legged at the side, watching
   { file: 'kid-wander', x: SAND.x + SAND.w / 2 - 0.45, z: SAND.z + 0.35, face: [-1, -0.1], pose: 'Sit_Cross_Legged_on_Floor', t: 0.9, r: 0.45 },
 ];
@@ -119,14 +120,17 @@ export class Sand {
     // ---- the children: the boy in bamboo green who asks the traveler over (and hands them the
     // twig), a girl in red drawing at the far corner, and a boy sitting at the side to watch.
     const loader = new GLTFLoader();
+    this._clips = {};
     this.kids = KIDS.map((k) => {
       const g = new THREE.Group();
       g.position.set(k.x, valleyHeight(k.x, k.z), k.z);
       g.rotation.y = Math.atan2(k.face[0], k.face[1]);
       this.group.add(g);
+      g.visible = false; // until their pose is there
       const kid = { spec: k, group: g, yaw0: g.rotation.y, mixer: null, acts: {}, cur: null, head: null };
       loader.load(`./assets/models/${k.file}.glb?v=${window.__V || ''}`, (gltf) => {
         const m = gltf.scene;
+        for (const c of gltf.animations) this._clips[c.name] = this._clips[c.name] || c;
         m.scale.setScalar(KID_SCALE);
         m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
         g.add(m);
@@ -135,30 +139,30 @@ export class Sand {
         kid.head = m.getObjectByName('mixamorigHead');
         // bones the drawing reach bends (put back to the clip's pose before each mixer update)
         kid.reachBones = ['Spine1', 'Spine2', 'LeftArm', 'LeftForeArm'].map((n) => m.getObjectByName('mixamorig' + n));
-        kid.saved = kid.reachBones.map((b) => b.quaternion.clone());
+        // and the squat: hips down, legs bent to keep the feet where they are
+        kid.legs = [['LeftUpLeg', 'LeftLeg', 'LeftFoot'], ['RightUpLeg', 'RightLeg', 'RightFoot']].map((l) => l.map((n) => m.getObjectByName('mixamorig' + n)));
+        kid.hips = m.getObjectByName('mixamorigHips');
+        kid.posed = [...kid.reachBones, ...kid.legs[0], ...kid.legs[1], kid.hips];
+        kid.saved = kid.posed.map((b) => b.quaternion.clone());
+        kid.savedHips = kid.hips.position.clone();
         kid.reach = 0;
         kid.hands = [m.getObjectByName('mixamorigLeftHand'), m.getObjectByName('mixamorigRightHand')];
-        if (kid === this.kids[0]) this._prepGive(kid);
-        this._pose(kid, k.pose, 0);
-        if (kid.cur) kid.cur.time = k.t;
-        kid.mixer.update(0);
+        for (const other of this.kids) if (other.mixer) this._settle(other);
       });
       return kid;
     });
     this.kid = this.kids[0].group;
 
-    // ---- twigs: the one the traveler draws with (still called the brush by the game; its pivot
-    // at the tip), one in each drawing child's hand, and a spare lying by the boy, which he
-    // picks up once he has given the traveler his own.
+    // ---- the stick: lying on the sand by the boy, in his hand once he picks it up to give it,
+    // and then the traveler's (still called the brush by the game; its pivot at the tip)
     this.brush = new THREE.Group();
     this.brush.visible = false;
     this.groundTwig = new THREE.Group();
     this.group.add(this.brush, this.groundTwig);
-    for (const kid of this.kids) {
-      if (!kid.spec.pics) continue;
-      kid.twig = new THREE.Group();
-      this.group.add(kid.twig);
-    }
+    const boy = this.kids[0];
+    boy.twig = new THREE.Group();
+    boy.twig.visible = false;
+    this.group.add(boy.twig);
     new GLTFLoader().load(`./assets/models/twig.glb?v=${window.__V || ''}`, (g) => {
       // grip: how far up from the tip the group's origin sits
       const make = (grip, len = STICK) => {
@@ -170,23 +174,23 @@ export class Sand {
         m.traverse((o) => { if (o.isMesh) o.castShadow = true; });
         return m;
       };
-      this.brush.add(make(0, STICK));
-      this.groundTwig.add(make(STICK / 2, STICK));
-      for (const kid of this.kids) if (kid.twig) kid.twig.add(make(STICK_GRIP, STICK));
+      this.brush.add(make(0));
+      this.groundTwig.add(make(STICK * 0.7));
+      boy.twig.add(make(STICK * 0.7));
     });
     // a point at the boy's head, for his spoken lines to stand beside
     this.speaker = new THREE.Object3D();
     this.speaker.position.set(KID_SPOT.x, valleyHeight(KID_SPOT.x, KID_SPOT.z) + 0.8, KID_SPOT.z);
     this.group.add(this.speaker);
     this.colliders = KIDS.map((k) => ({ x: k.x, z: k.z, r: k.r }));
-    this.giving = 0; this.picking = 0;
+    this.giving = 0; this.back = 0; this.carry = 0;
     this.clapT = 0; this.voiceOf = 0; // whose head the spoken words stand by (0: the boy in green, 2: the boy at the side)
     this.REACH = REACH; // (for tuning from the console)
     this._q = new THREE.Quaternion();
     // the children who draw, and what each of them draws, picture after picture
     this.drawers = this.kids.filter((k) => k.spec.pics).map((kid) => {
       const k = kid.spec;
-      return kid.drawer = { kid, x: k.x, z: k.z, yaw: Math.atan2(k.face[0], k.face[1]), pics: k.pics, at: k.at, n: -1, s: 0, t: 0, pts: [], line: null, w: 0.5 };
+      return kid.drawer = { kid, x: k.x, z: k.z, yaw: Math.atan2(k.face[0], k.face[1]), pics: k.pics, at: k.at, side: k.side, n: -1, s: 0, t: 0, pts: [], line: null, w: 0.5 };
     });
     // they have been at it a while before the traveler comes
     this.kidBegins(0.5);
@@ -299,8 +303,8 @@ export class Sand {
       const c = Math.cos(d.yaw), sn = Math.sin(d.yaw);
       // the picture in front of them, turned the way they face, upright to whoever looks at it
       // from across the sand (its foot toward the traveler)
-      // (a little to their left, the hand the stick is in)
-      d.pts = pic.strokes.map((st) => st.map(([x, y]) => { const dx = x + 0.12, dz = d.at + y; return toPx(d.x + dx * c + dz * sn, d.z - dx * sn + dz * c); }));
+      // (a little to their left, the hand they draw with)
+      d.pts = pic.strokes.map((st) => st.map(([x, y]) => { const dx = x + d.side, dz = d.at + y; return toPx(d.x + dx * c + dz * sn, d.z - dx * sn + dz * c); }));
       if (head > 0) {
         const total = d.pts.reduce((n, st) => n + st.length, 0);
         let done = 0;
@@ -347,7 +351,21 @@ export class Sand {
     kid.cur = a;
   }
 
-  /** Where in his pick-up the boy's hand is lowest (and which hand): the twig lies just there. */
+  /** Once a child's model (and the clips they borrow) are in: their pose, and they appear. */
+  _settle(kid) {
+    const k = kid.spec;
+    for (const name of [k.pose, kid === this.kids[0] && 'Collect_Object']) {
+      if (name && !kid.acts[name] && this._clips[name]) kid.acts[name] = kid.mixer.clipAction(this._clips[name]);
+    }
+    if (kid.cur || !kid.acts[k.pose]) return;
+    if (kid === this.kids[0]) this._prepGive(kid);
+    this._pose(kid, k.pose, 0);
+    kid.cur.time = k.t;
+    kid.mixer.update(0);
+    kid.group.visible = true;
+  }
+
+  /** Where in his getting up the boy's right hand is lowest: his stick stands in the sand just there. */
   _prepGive(kid) {
     const a = kid.acts.Collect_Object;
     if (!a) return;
@@ -357,29 +375,29 @@ export class Sand {
     for (let t = 0.6; t < 3.6; t += 0.05) {
       kid.mixer.setTime(t);
       kid.group.updateMatrixWorld(true);
-      kid.hands[0].getWorldPosition(v); // (he reaches down with his left, the stick hand)
+      kid.hands[1].getWorldPosition(v);
       if (v.y < best) { best = v.y; kid.pickT = t; kid.pickAt = v.clone(); }
     }
     a.stop();
     kid.mixer.setTime(0);
     if (!kid.pickAt) return;
-    const p = kid.pickAt;
-    this.groundTwig.position.set(p.x, valleyHeight(p.x, p.z) + 0.02, p.z);
-    this.groundTwig.rotation.set(Math.PI / 2, kid.yaw0 + 1.1, 0, 'YXZ');
+    // pushed into the sand, leaning a little away from him, with his hand's height of it showing
+    const q = kid.group.quaternion;
+    const dir = new THREE.Vector3(0, -1, 0).addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(q), 0.12)
+      .addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(q), 0.1).normalize();
+    this.groundTwig.position.copy(kid.pickAt);
+    this.groundTwig.quaternion.setFromUnitVectors(DOWN, dir);
   }
 
-  /** The boy gets up and turns to the traveler (at x, z), his twig in his hand. */
+  /** The boy picks up the stick lying by him, gets up and turns to the traveler (at x, z) with it. */
   give(x, z) {
     const k = this.kids[0];
     if (!k.mixer) return;
-    this.giving = 0.001;
+    this.giving = 0.001; this.talking = 0;
     this.giveTo = Math.atan2(x - k.group.position.x, z - k.group.position.z);
-    if (k.pickAt) {
-      // the spare lies where his hand will come down, wherever he has shuffled to
-      const p = k.pickAt;
-      this.groundTwig.position.set(p.x, valleyHeight(p.x, p.z) + 0.02, p.z);
-    }
-    this._pose(k, 'Talk_with_Left_Hand_on_Hip', 0.9);
+    // into his pick-up a little before his hand comes down
+    this._pose(k, 'Collect_Object', 0.5, true);
+    k.cur.time = Math.max(0, (k.pickT || 1.5) - 0.9);
   }
 
   /** The boy sitting at the side claps (and his words stand beside him while he does). */
@@ -390,14 +408,14 @@ export class Sand {
     this.clapT = 0.001;
   }
 
-  /** The traveler has his twig now: he picks up the spare one and goes back to his drawing. */
+  /** The traveler has the stick now: the boy squats back down to his drawing. */
   taken() {
     const k = this.kids[0];
-    if (!k.mixer || this.picking) return;
+    if (!k.mixer || this.back) return;
     this.giving = 0;
-    this.picking = 0.001;
-    if (k.twig) k.twig.visible = false;
-    this._pose(k, 'Collect_Object', 0.6, true);
+    this.back = 0.001;
+    k.twig.visible = false;
+    this._pose(k, k.spec.pose, 0.9);
   }
 
   _rotW(bone, axis, angle) {
@@ -427,10 +445,12 @@ export class Sand {
   _kidsUpdate(dt) {
     for (const k of this.kids) {
       if (!k.mixer) continue;
-      const rb = k.reachBones;
-      for (let i = 0; i < rb.length; i++) rb[i].quaternion.copy(k.saved[i]);
+      const rb = k.reachBones, pb = k.posed;
+      for (let i = 0; i < pb.length; i++) pb[i].quaternion.copy(k.saved[i]);
+      k.hips.position.copy(k.savedHips);
       k.mixer.update(dt);
-      for (let i = 0; i < rb.length; i++) k.saved[i].copy(rb[i].quaternion);
+      for (let i = 0; i < pb.length; i++) k.saved[i].copy(pb[i].quaternion);
+      k.savedHips.copy(k.hips.position);
       // while a child is drawing, they lean in and their right hand goes down to the sand, moving
       const d = k.drawer;
       const drawing = d && !this.blowing && d.n >= 0 && d.pts.length > 0 && k.cur === k.acts[k.spec.pose];
@@ -438,23 +458,37 @@ export class Sand {
       if (k.reach > 0.01) {
         k.group.updateMatrixWorld(true);
         k.tt = (k.tt || 0) + dt;
-        const side = this._v2.set(1, 0, 0).applyQuaternion(k.group.quaternion);
         const r = k.reach;
+        if (REACH.drop > 0) {
+          // down into a deeper squat: the hips lower, the knees bend, the feet stay
+          const feet = k.legs.map((l) => l[2].getWorldPosition(new THREE.Vector3()));
+          const soles = k.legs.map((l) => l[2].getWorldQuaternion(new THREE.Quaternion()));
+          const hp = k.hips.getWorldPosition(this._v2);
+          hp.y -= REACH.drop * r;
+          k.hips.parent.worldToLocal(hp);
+          k.hips.position.copy(hp);
+          k.hips.updateMatrixWorld(true);
+          k.legs.forEach((l, i) => {
+            this._ik(l[0], l[1], l[2], feet[i], 1);
+            // and the feet stay flat on the sand the way they were
+            const pq = l[2].parent.getWorldQuaternion(new THREE.Quaternion());
+            l[2].quaternion.copy(pq.invert().multiply(soles[i]));
+            l[2].updateMatrixWorld(true);
+          });
+        }
+        const side = this._v2.set(1, 0, 0).applyQuaternion(k.group.quaternion);
         this._rotW(rb[0], side, REACH.lean * r);
         this._rotW(rb[1], side, REACH.lean * r);
-        // the twig's tip to the end of the line they are drawing (or where the next one starts),
-        // the hand up the twig from it, back toward the child
+        // the finger to the end of the line they are drawing (or where the next one starts)
         const pt = d.line && d.line.length ? d.line[d.line.length - 1] : d.pts[d.s] ? d.pts[d.s][0] : d.cursor;
         if (pt) {
           toWorld(pt[0], pt[1], this._v2); this._v2.y -= 0.02;
           if (!k.tip) k.tip = this._v2.clone(); else k.tip.lerp(this._v2, 1 - Math.exp(-dt * 10));
         }
         if (k.tip) {
-          // the stick slants back to the hand and out to the left, clear of the knees
           const fwd = this._v4.set(0, 0, 1).applyQuaternion(k.group.quaternion);
-          const hand = this._v3.set(0, 1, 0).addScaledVector(fwd, -REACH.back);
-          hand.addScaledVector(this._v5.set(1, 0, 0).applyQuaternion(k.group.quaternion), REACH.out);
-          hand.normalize().multiplyScalar(STICK_GRIP).add(k.tip);
+          const hand = this._v3.copy(k.tip).addScaledVector(fwd, -REACH.back);
+          hand.y += REACH.finger;
           this._ik(rb[2], rb[3], k.hands[0], hand, r);
         }
       }
@@ -462,31 +496,31 @@ export class Sand {
     const k = this.kids[0];
     if (this.giving && k.mixer) {
       this.giving += dt;
-      k.group.rotation.y = angleTo(k.group.rotation.y, this.giveTo, Math.min(1, dt * 1.5) * ss(this.giving, 0.6, 2.0));
-    }
-    if (this.picking && k.mixer) {
-      this.picking += dt;
-      k.group.rotation.y = angleTo(k.group.rotation.y, k.yaw0, Math.min(1, dt * 2));
-      if (!k.twig.visible && this.picking >= (k.pickT || 1.5)) { this.groundTwig.visible = false; k.twig.visible = true; }
       const a = k.acts.Collect_Object;
-      if (a && k.cur === a && a.time > a.getClip().duration - 0.8) { this._pose(k, k.spec.pose, 0.8); this.picking = 0; }
-    }
-    // each child's stick, in the left hand: hanging loosely down and forward from it, or
-    // (drawing) pointed from the hand down to the line
-    for (const kid of this.kids) {
-      if (!kid.twig || !kid.twig.visible || !kid.hands) continue;
-      const h = kid.hands[0];
-      h.getWorldPosition(kid.twig.position);
-      const q = kid.group.quaternion;
-      const hang = this._v3.set(0, -1, 0).addScaledVector(this._v4.set(0, 0, 1).applyQuaternion(q), 0.8)
-        .addScaledVector(this._v5.set(1, 0, 0).applyQuaternion(q), 0.25).normalize();
-      this._q.setFromUnitVectors(DOWN, hang);
-      if (kid.tip && kid.reach > 0.01) {
-        const dir = this._v3.copy(kid.tip).sub(kid.twig.position).normalize();
-        this._q4.setFromUnitVectors(DOWN, dir);
-        this._q.slerp(this._q4, kid.reach);
+      if (k.cur === a) {
+        // his hand down at the stick: it is in it; then up, and over to talk
+        if (!k.twig.visible && a.time >= (k.pickT || 1.5)) { this.groundTwig.visible = false; k.twig.visible = true; this.carry = 0.001; }
+        if (a.time >= (k.pickT || 1.5) + 0.9) this._pose(k, 'Talk_with_Left_Hand_on_Hip', 0.8);
+      } else {
+        this.talking += dt;
+        k.group.rotation.y = angleTo(k.group.rotation.y, this.giveTo, Math.min(1, dt * 1.5) * ss(this.talking, 0.2, 1.4));
       }
-      kid.twig.quaternion.copy(this._q);
+    }
+    if (this.back && k.mixer) {
+      this.back += dt;
+      k.group.rotation.y = angleTo(k.group.rotation.y, k.yaw0, Math.min(1, dt * 2));
+      if (this.back > 2.5) this.back = 0;
+    }
+    // the stick in his right hand: from how it stood in the sand to hanging loosely down and
+    // forward from his hand
+    if (k.twig.visible && k.hands) {
+      this.carry += dt;
+      k.hands[1].getWorldPosition(k.twig.position);
+      const q = k.group.quaternion;
+      const hang = this._v3.set(0, -1, 0).addScaledVector(this._v4.set(0, 0, 1).applyQuaternion(q), 0.8)
+        .addScaledVector(this._v5.set(1, 0, 0).applyQuaternion(q), -0.25).normalize();
+      this._q.setFromUnitVectors(DOWN, hang);
+      k.twig.quaternion.copy(this.groundTwig.quaternion).slerp(this._q, ss(this.carry, 0, 0.9));
     }
     // the boy on the right, clapping for a while
     const w = this.kids[2];
